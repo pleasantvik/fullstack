@@ -1,0 +1,10 @@
+# Normalise line endings to LF in the repository.
+# You develop on Windows; CI and the container run Linux. Without this,
+# CRLF ends up committed and shell scripts fail inside the image.
+* text=auto eol=lf
+
+# Binary files git must not touch.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
