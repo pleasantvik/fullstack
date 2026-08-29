@@ -33,13 +33,60 @@ I am here to learn, not to receive code. A session where you produce flawless co
 
 ### Before writing code for any new concept, explain in this order
 
-**WHAT** — What are we building? One paragraph, plain language. Name the thing and say what it does.
+Every one of the four sections below has **two parts, in this order**:
 
-**WHY** — Why does it exist? What breaks, or gets worse, without it? If there's a naive version I'd instinctively reach for, name it and say what's wrong with it.
+1. **In plain terms** — the idea with no jargon at all, plus a concrete everyday analogy
+   or example that someone with no software background would follow. This is not the
+   technical explanation with shorter words. It is a comparison to something physical
+   and familiar.
+2. **Technically** — the precise version, using the correct terms of art.
 
-**WHERE** — Exactly which files and folders this lives in, and why there. Show the directory tree. If it introduces a new folder, justify the boundary you're drawing.
+Both parts, every time. If the plain-terms half can't be written, the concept isn't
+understood well enough to build yet — say so instead of skipping it.
 
-**HOW** — The approach, the key decisions, and at least one alternative you rejected with the reason. Name the tradeoff explicitly.
+**WHAT** — What are we building? Name the thing and say what it does.
+- *In plain terms:* what it would be if it were a physical object or an everyday routine.
+- *Technically:* one paragraph naming the component and its single responsibility.
+
+**WHY** — Why does it exist? What breaks, or gets worse, without it? If there's a naive
+version I'd instinctively reach for, name it and say what's wrong with it.
+- *In plain terms:* a short story in which the thing is missing and something goes wrong.
+  Make the failure concrete and slightly painful — a wasted afternoon, a locked-out
+  customer, a bill nobody expected.
+- *Technically:* the engineering consequence, and the flaw in the naive alternative.
+
+**WHERE** — Exactly which files and folders this lives in, and why there. Show the
+directory tree. If it introduces a new folder, justify the boundary you're drawing.
+- *In plain terms:* why this goes in this drawer and not that one — what someone would
+  have to remember if it were filed somewhere else.
+- *Technically:* the tree, and the boundary the folder represents.
+
+**HOW** — The approach, the key decisions, and at least one alternative you rejected with
+the reason. Name the tradeoff explicitly.
+- *In plain terms:* the decision framed as one a non-engineer makes — what you gain, what
+  you give up, and why it's worth it here.
+- *Technically:* the mechanism, the decision, and the rejected alternative.
+
+Rules for the analogies, because a vague analogy is worse than no analogy:
+
+- **Map every element explicitly.** Finish each analogy with a table: this thing in the
+  story = this thing in the project. Every noun I meet in the story must appear in that
+  table. If something in the story has no counterpart in the code, cut it from the story.
+- **No unexplained phrases inside the analogy itself.** If the story uses a term I would
+  have to ask about, the analogy has already failed. "One weekly shop" was exactly this
+  failure: it named an arrangement that was never described, so it explained nothing.
+- **Pick a comparison whose structure actually matches.** Before writing it, check that
+  the relationship between the parts is the same. Flatmates share a kitchen but not a
+  goal; two services in one repo share a goal but never share a workspace. Wrong shape,
+  so the analogy collapsed the moment it was questioned.
+- **Make it a story with a specific failure**, not an abstract resemblance. Somebody does
+  something, something goes wrong, and it costs them time or money. I should be able to
+  predict the failure a sentence before you name it.
+- One analogy per concept. Don't stack three, and don't switch analogy halfway through.
+- Say where it breaks down, so I don't trust it further than it goes.
+- Reach for post, keys, filing cabinets, deliveries, restaurants, building sites,
+  paperwork. Never an analogy that needs its own explanation first.
+- Never let the analogy replace the precise version. It buys intuition, not accuracy.
 
 Only then, write the code.
 
