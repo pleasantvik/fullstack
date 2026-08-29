@@ -74,6 +74,47 @@ Deploy workflow: pull image, run `migrate deploy`, restart, verify `/health`. De
 
 Login, Register, Board (three status columns), Task detail modal, empty and loading states. Design tokens established. Nothing else — see `docs/design/ui-spec.md`.
 
+
+---
+
+## Increment notes
+
+### 1.1 — Repo scaffold *(2026-08-29)*
+
+**What I built:** git repo on `main` with `.gitignore`, `.gitattributes` (LF
+normalisation, since dev is Windows and CI/containers are Linux) and `.nvmrc`
+landed in the first commit, before anything else. pnpm workspace globbing
+`apps/*` with `api` and `web` as unscoped members. Node 22 and pnpm 11.24.0
+pinned via `.nvmrc` and `packageManager`. README documenting only what exists.
+Empty `.env.example`. Pushed to GitHub, `main` protected by a ruleset requiring
+a pull request, blocking force-push and blocking deletion.
+
+**What broke, and why:**
+
+1. *Branch protection is not available on private repos on the free plan.* Made
+   the repo private to avoid publishing an employer name, then hit a 403 from
+   GitHub. Went public with the identifying line removed instead. The lesson:
+   check what a platform decision costs before making it, not after.
+2. *Softening a line in a new commit does not remove it from history.* The
+   original wording was in all four commits and `git log -p` would have shown
+   it on a public repo. Fixed with `git filter-branch --tree-filter`, which
+   rewrote every SHA and required a force-push. Trivial at four commits;
+   this is the same lesson as gitignoring `.env` before the first commit,
+   arriving from the other direction.
+3. *A GitHub ruleset silently defaulted `require_extra_approval_for_unattributed_changes`
+   to `true`.* On a solo repo with an unverified commit email that would have
+   made every PR unmergeable. Caught by reading back the effective rules
+   instead of trusting the create call.
+
+**What I would do differently:** Rather than setting `user.name` and `user.email`
+by hand on this repo, set up a proper separation between my personal and work
+GitHub identities from the start — separate SSH keys, and a git config that
+selects the right identity automatically based on where the repo lives on disk.
+Per-repo config works, but it depends on remembering every time, and the failure
+is silent: commits land under the wrong name and I find out much later.
+Everything else in this increment was new, and I learnt it by building it.
+
+
 ---
 
 ## Reflection

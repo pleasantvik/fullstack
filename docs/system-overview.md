@@ -36,6 +36,7 @@ CI/CD pipeline (lint, test, build)
 
 | Layer | Role | Built at | Status |
 |---|---|---|---|
+| Repository | pnpm workspace monorepo, protected `main` | M1 | **Real** |
 | Frontend | React + Vite UI | M1 | Planned |
 | API | NestJS — auth, tasks, validation | M1 | Planned |
 | Database | PostgreSQL | M1 | Planned |
@@ -55,3 +56,4 @@ CI/CD pipeline (lint, test, build)
 ## Status log
 
 - **2026-08-29** — Document created. Nothing deployed. Architecture is the reference shape.
+- **2026-08-29** — Increment 1.1. Repository is real: pnpm workspace with `apps/api` and `apps/web` as members, pinned Node 22 and pnpm 11.24.0, pushed to GitHub with a ruleset on `main` requiring a pull request and blocking force-push and deletion. No application code, nothing deployed.
