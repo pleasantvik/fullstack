@@ -1,0 +1,45 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Local development VM for task-manager.
+#
+# Docker runs inside this VM rather than on Windows via Docker Desktop, because
+# Docker Desktop requires Hyper-V, and Hyper-V degrades the VirtualBox VMs used
+# elsewhere on this machine. See docs/decisions/0002-local-dev-in-a-vagrant-vm.md
+#
+# Usage:
+#   cd infra/vagrant
+#   vagrant up
+#   vagrant ssh
+
+Vagrant.configure("2") do |config|
+  # Pinned. An unpinned box silently changes under you between rebuilds, which
+  # defeats the point of being able to destroy and recreate.
+  config.vm.box         = "ubuntu/jammy64"
+  config.vm.box_version = "20241002.0.0"
+  config.vm.hostname    = "task-manager-dev"
+
+  # Host-only network. 192.168.56.0/21 is the range VirtualBox permits by
+  # default; anything else needs /etc/vbox/networks.conf edited. Deliberately
+  # not 192.168.33.x, which the CentOS learning VM already uses.
+  config.vm.network "private_network", ip: "192.168.56.20"
+
+  # Forwarded ports, bound to loopback only so nothing is exposed to the
+  # local network.
+  config.vm.network "forwarded_port", guest: 5432, host: 5432, host_ip: "127.0.0.1"  # postgres
+  config.vm.network "forwarded_port", guest: 3000, host: 3000, host_ip: "127.0.0.1"  # api
+  config.vm.network "forwarded_port", guest: 5173, host: 5173, host_ip: "127.0.0.1"  # vite
+
+  # The code lives in the VM at ~/task-manager, cloned from GitHub. The default
+  # share is disabled so there is no second, slower copy to edit by mistake.
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "task-manager-dev"
+    vb.memory = 4096   # raise to 6144-8192 at Milestone 4: two API instances,
+    vb.cpus   = 2      # redis, worker, prometheus and grafana all run together
+  end
+
+  # Runs once on first `vagrant up`. Re-run later with `vagrant provision`.
+  config.vm.provision "shell", path: "provision.sh"
+end
