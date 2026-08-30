@@ -1,3 +1,6 @@
+# Vagrant local machine state - VM ids and metadata, per-machine, never shared
+.vagrant/
+
 # Dependencies
 node_modules/
 .pnpm-store/
