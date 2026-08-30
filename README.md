@@ -72,7 +72,9 @@ Forwarded to `127.0.0.1` on the host only:
 | 3000 | API |
 | 5173 | Vite dev server |
 
-The VM is also reachable directly on `192.168.56.20`.
+There is no host-only adapter — a second NIC hung the guest on boot. The
+forwarded ports above are the only route in. See
+`docs/decisions/0002-local-dev-in-a-vagrant-vm.md`.
 
 ### The VM is disposable
 
