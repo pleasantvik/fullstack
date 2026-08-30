@@ -93,7 +93,40 @@ and Nest watch mode, and they make Docker build contexts slow.
   in one Windows defence, accepted deliberately. Verify with
   `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` — must be `False`.
 
+## Known constraint: VirtualBox runs on the NEM backend
+
+VirtualBox on this machine cannot get the CPU's virtualisation extensions
+directly. It falls back to NEM, running guests through Windows' Hyper-V API:
+
+```
+HM: HMR3Init: Attempting fall back to NEM: VT-x is not available
+```
+
+That message means *not available to VirtualBox*, not absent from the firmware.
+Windows Virtualization-Based Security holds the extensions.
+
+Already switched off, and none of it was enough:
+
+- Memory Integrity / HVCI
+- Kernel shadow stacks
+- `EnableVirtualizationBasedSecurity` in the registry (verified `0` after reboot)
+- `bcdedit /set hypervisorlaunchtype off` (verified `Off` after reboot)
+
+What still holds VBS on is **Windows Hello Enhanced Sign-in Security**
+(`DeviceGuard\Scenarios\WindowsHello\Enabled = 1`). Disabling it can take
+biometric login with it, which is a daily cost for a background benefit.
+Deliberately not done.
+
+**Consequence:** guest boots occasionally hang, and everything runs somewhat
+slower. Remedy is `vagrant reload`. If a destroy leaves an orphaned folder in
+`VirtualBox VMs\`, delete it before the next `vagrant up` — a suspended VM
+leaves a `.sav` file behind and the next import cannot claim the name.
+
+Do not "fix" this by touching VT-x in the BIOS. It is enabled; disabling it
+would stop VirtualBox working entirely.
+
 ## Revisit if
+
 
 Memory Integrity needs to be switched back on, or VirtualBox stops being needed
 for anything else. Either would make Docker Desktop or WSL2 the simpler choice
