@@ -19,10 +19,15 @@ Vagrant.configure("2") do |config|
   config.vm.box_version = "20241002.0.0"
   config.vm.hostname    = "task-manager-dev"
 
-  # Host-only network. 192.168.56.0/21 is the range VirtualBox permits by
-  # default; anything else needs /etc/vbox/networks.conf edited. Deliberately
-  # not 192.168.33.x, which the CentOS learning VM already uses.
-  config.vm.network "private_network", ip: "192.168.56.20"
+  # NO host-only network, deliberately.
+  #
+  # A second adapter was configured here (private_network, 192.168.56.20) and it
+  # hung the guest on boot, twice, at exactly the same point: immediately after
+  # the kernel renamed eth1 (PCI slot 8, the host-only NIC) to enp0s8. Same stall
+  # both times, so a cause rather than a race.
+  #
+  # It is not needed. Everything is reachable over the forwarded ports below.
+  # Do not add it back without a reason that survives a boot test.
 
   # Forwarded ports, bound to loopback only so nothing is exposed to the
   # local network.

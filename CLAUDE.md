@@ -184,6 +184,7 @@ task-manager/
     ├── roadmap.md               the full plan
     ├── milestones/              one file per milestone
     ├── decisions/               short ADRs
+    ├── posts/                   LinkedIn and X drafts, one file per post
     └── design/ui-spec.md        design system + screen inventory
 ```
 
@@ -235,8 +236,13 @@ From Milestone 3 onward, any migration touching existing rows uses expand → ba
 3. It's deployed and reachable in production (from Milestone 1, week 3 onward)
 4. `docs/system-overview.md` updated — one more thing moves from planned to real
 5. A short note appended to the milestone file: what was built, what broke, what I'd do differently
+6. A post drafted in `docs/posts/` — what I did, what I learnt, what's next, in both LinkedIn and X form
 
 Item 5 is where the learning consolidates. Don't let me skip it.
+
+Item 6 is how the progress gets shared. Draft it at the end of the increment while
+the detail is fresh — I post on my own schedule, but writing it later means writing
+it worse. Filename is the post title, kebab-cased. Convention in `docs/posts/README.md`.
 
 ---
 
