@@ -1,0 +1,48 @@
+# Local development stack.
+#
+# Runs inside the Vagrant VM, not on Windows.
+# See docs/decisions/0002-local-dev-in-a-vagrant-vm.md
+#
+# Ports are published to the VM; the Vagrantfile forwards them on to Windows,
+# so localhost:5432 works from either side.
+#
+#   docker compose up -d     start
+#   docker compose ps        state, including health
+#   docker compose logs -f   follow the logs
+#   docker compose down      stop and remove containers - DATA SURVIVES
+#   docker compose down -v   also delete the volume - DATA IS GONE
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: task-manager-postgres
+    restart: unless-stopped
+
+    # Read from .env by Compose. The database, user and password are created
+    # only on the volume's FIRST start - changing them later does nothing until
+    # the volume is destroyed.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    ports:
+      - "5432:5432"
+
+    # Named, not anonymous. An anonymous volume gets a 32-character hex name and
+    # is orphaned the moment the container is removed.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # "Running" and "ready to accept connections" are not the same thing.
+    # pg_isready reports the second. 1.7 will gate other services on this.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: task-manager-postgres-data
