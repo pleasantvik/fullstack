@@ -39,7 +39,7 @@ CI/CD pipeline (lint, test, build)
 | Repository | pnpm workspace monorepo, protected `main` | M1 | **Real** |
 | Frontend | React + Vite UI | M1 | Planned |
 | API | NestJS — auth, tasks, validation | M1 | Planned |
-| Database | PostgreSQL | M1 | Planned |
+| Database | PostgreSQL | M1 | **Real (local)** |
 | Docker | Packaging for api, web, worker | M1 | Planned |
 | CI/CD | GitHub Actions | M1 | Planned |
 | EC2 | Production server | M1 | Planned |
@@ -57,3 +57,4 @@ CI/CD pipeline (lint, test, build)
 
 - **2026-08-29** — Document created. Nothing deployed. Architecture is the reference shape.
 - **2026-08-29** — Increment 1.1. Repository is real: pnpm workspace with `apps/api` and `apps/web` as members, pinned Node 22 and pnpm 11.24.0, pushed to GitHub with a ruleset on `main` requiring a pull request and blocking force-push and deletion. No application code, nothing deployed.
+- **2026-09-12** — Increment 1.2a. Postgres is real locally: a `postgres:16` service declared in `docker-compose.yml`, credentials interpolated from `.env`, data in the named volume `task-manager-postgres-data`, and a `pg_isready` healthcheck so Compose reports ready-for-connections rather than merely running. Reachable on `localhost:5432` from inside the VM and from Windows via the Vagrant port forward. Nothing deployed — there is no production database, and no application code talks to this one yet.

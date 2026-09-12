@@ -115,6 +115,42 @@ is silent: commits land under the wrong name and I find out much later.
 Everything else in this increment was new, and I learnt it by building it.
 
 
+### 1.2a — Postgres in a container *(2026-09-12)*
+
+**What I built:** `docker-compose.yml` at the repo root declaring one
+`postgres:16` service. It replaces a `docker run` command that would otherwise
+have existed only in my shell history, which is what makes "works on a clean
+checkout" true rather than aspirational. Credentials are interpolated from
+`.env` rather than hardcoded, even locally. Data lives in a **named** volume,
+`task-manager-postgres-data`, not the anonymous one the Postgres image creates
+on its own and orphans as soon as the container is removed. A `pg_isready`
+healthcheck means `docker compose ps` reports *ready to accept connections*
+rather than merely *running* — increment 1.7 will gate the API on it with
+`depends_on: condition: service_healthy`. The image is pinned to the major
+version: `latest` would silently roll to Postgres 17 one day and change SQL
+semantics underneath me, while pinning the patch would mean never receiving
+security fixes. `.env.example` gained `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`POSTGRES_DB` and `DATABASE_URL`.
+
+I proved the two commands do what I think they do rather than assuming: wrote
+data, `docker compose down`, brought it back up, data still there; then
+`docker compose down -v`, back up, empty database. That distinction is the
+whole concept focus of this increment and it cost about four minutes to verify.
+
+**What broke, and why:** Nothing. The increment went cleanly first time. Worth
+recording as much as a failure would be — the reason it went cleanly is that
+the concepts were talked through in the previous session and the file was
+written once, deliberately, rather than assembled by trial and error.
+
+**What I would do differently:** Little, on this evidence. The one thing I now
+know and would otherwise have discovered at a bad moment: `POSTGRES_USER`,
+`POSTGRES_PASSWORD` and `POSTGRES_DB` only take effect on the volume's *first*
+start. Editing them in `.env` later changes nothing until the volume is
+destroyed. That is harmless locally and would be a genuinely confusing hour on a
+server, so the behaviour is commented in both `docker-compose.yml` and
+`.env.example` rather than left to memory.
+
+
 ---
 
 ## Reflection
