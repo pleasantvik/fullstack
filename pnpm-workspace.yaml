@@ -1,2 +1,12 @@
 packages:
   - apps/*
+
+# Packages allowed to run postinstall scripts. pnpm blocks all of them by
+# default - a postinstall runs arbitrary code at install time, which is the
+# most common route a compromised package takes to a developer's machine.
+# Each entry here is a deliberate decision, not a convenience.
+allowBuilds:
+  # Downloads Prisma's query engine binary. Without it the client never
+  # generates, and the failure surfaces much later as a missing import.
+  '@prisma/engines': true
+  prisma: true

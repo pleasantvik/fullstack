@@ -1,0 +1,81 @@
+// Schema v1 — increment 1.2b
+//
+// The single source of truth for the shape of the database.
+//
+// Editing this file changes NOTHING on its own. It is a description, not an
+// instruction. `pnpm --filter api db:migrate` reads it, works out the SQL needed
+// to get the database from where it is to what this file describes, and writes
+// that SQL into prisma/migrations/ as a committed, reviewable artifact.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 removed `url` from this block. The connection string now lives in
+// prisma.config.ts, so the schema describes only the SHAPE of the database and
+// never where it is. Same file, two environments — that separation is the point.
+datasource db {
+  provider = "postgresql"
+}
+
+// Real Postgres enum types, not strings. The database itself rejects a value
+// that isn't listed here, so a typo fails at write time rather than becoming a
+// task nobody can find. Cost: adding a value later needs a migration.
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tasks         Task[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// One row per issued refresh token. Rotation in 1.4 revokes the old row and
+// inserts a new one, which is only possible because tokens are rows rather than
+// self-contained signed strings.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  userId      String       @db.Uuid
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // The board view loads one user's tasks grouped by status. Owner first,
+  // because every query filters on it; status second, because only some do.
+  @@index([userId, status])
+  @@map("tasks")
+}

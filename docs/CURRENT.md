@@ -1,7 +1,7 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.2b — Prisma and schema v1
+**Active increment:** 1.3 — NestJS scaffold and config
 **Last updated:** 2026-09-12
 
 ## Start here next session
@@ -18,22 +18,24 @@
     docker compose up -d
     docker compose ps        # postgres should report (healthy)
 
-Then increment **1.2b — Prisma into `apps/api`**. Not explained yet, so this one
+Then increment **1.3 — NestJS scaffold and config**. Not explained yet, so it
 starts with the WHAT/WHY/WHERE/HOW before any code:
 
-- Prisma installed into `apps/api`, `schema.prisma` created, datasource reading
-  `DATABASE_URL` from `.env`
-- Schema v1: `User`, `RefreshToken`, `Task`, and two enums (task status, task
-  priority). No `workspaceId` — teams are Milestone 3, see the no-pre-building
-  rule
-- First migration generated with `prisma migrate dev` and **committed**
-- `prisma studio` to look at the empty tables
+- NestJS installed into `apps/api`, app module, `main.ts`
+- Config module with **schema-validated** env vars — a missing `DATABASE_URL`
+  crashes at boot with a clear message, not at 2am on the first request
+- Global validation pipe
+- Pino structured logging with request IDs
+- A `PrismaService` wiring the generated client into Nest's dependency
+  injection. Prisma 7 needs a driver adapter (`@prisma/adapter-pg`) rather than
+  connecting on its own — that arrives here
 
-*Concept focus:* a migration is a versioned artifact that lives in git, not a
-command you run. Why `migrate dev` and `migrate deploy` are different commands
-with different blast radii.
+*Concept focus:* fail-fast config. Why a process that cannot possibly work
+should refuse to start rather than accept traffic.
 
-Prisma lands before NestJS. Nest arrives in 1.3.
+Rule earned in 1.2b: **never type `prisma` directly.** Every Prisma command goes
+through a `db:*` script in `apps/api/package.json`, because each one needs
+`dotenv-cli` in front of it to find the repo-root `.env`.
 
 ## Environment rules, learned the hard way
 
@@ -52,6 +54,11 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.2b — Prisma and schema v1.** `User`, `RefreshToken` and `Task`, two Postgres
+enum types, UUID primary keys, `ON DELETE CASCADE` on both foreign keys. First
+migration generated and committed. Prisma pinned to `^7.10.0` — npm's `latest`
+points at an 8.0 release candidate, see ADR 0003.
 
 **1.2a — Postgres in a container.** `docker-compose.yml` with one `postgres:16`
 service, credentials from `.env`, data in the named volume
