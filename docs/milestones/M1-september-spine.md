@@ -151,6 +151,62 @@ server, so the behaviour is commented in both `docker-compose.yml` and
 `.env.example` rather than left to memory.
 
 
+### 1.2b — Prisma and schema v1 *(2026-09-12)*
+
+**What I built:** Prisma installed into `apps/api`, pinned to `^7.10.0`.
+`schema.prisma` with three models — `User`, `RefreshToken`, `Task` — and two
+Postgres enum types. UUID primary keys stored as native `uuid`, not text.
+Refresh tokens stored as a hash with a nullable `revokedAt`, because rotation in
+1.4 needs to know *when* a token was revoked, which a boolean cannot express.
+`ON DELETE CASCADE` on both foreign keys, enforced by the database rather than
+by application code. Tables mapped to `snake_case` while the models stay
+PascalCase in TypeScript. No `workspaceId` — teams are Milestone 3.
+
+The first migration is generated and committed at
+`prisma/migrations/20260912213046_init/`, and the database now carries a
+`_prisma_migrations` table with one row recording that it ran. That table is the
+whole concept of this increment made concrete: the migration is a file in git,
+and the database keeps its own record of which files it has already applied.
+
+Three `db:*` scripts in `apps/api/package.json` wrap every Prisma command with
+`dotenv-cli`, so the repo-root `.env` stays the single place the password lives.
+
+**What broke, and why:**
+
+1. *`pnpm add prisma` installed a release candidate.* Prisma publish
+   `8.0.0-rc.14` under the `latest` dist-tag, and `latest` is what `pnpm add`
+   asks for. I ended up with pre-release software and an unexplained 50 MB of
+   Cloudflare and Rolldown packages. This is the same lesson as pinning
+   `postgres:16` in 1.2a, arriving from a direction I wasn't watching — I
+   pinned the database deliberately and then let the package manager choose
+   for me five minutes later. ADR 0003 records the decision to stay on 7.x.
+2. *Prisma 7 removed `url` from the datasource block.* The connection string now
+   lives in `prisma.config.ts` and the schema describes only the shape of the
+   database. A sensible change, and a reminder that a major version bump is a
+   different tool wearing the same name.
+3. *`pnpm approve-builds` silently declined Prisma's engine.* pnpm 10 onward
+   blocks postinstall scripts by default, which is right — a postinstall is
+   arbitrary code running at install time. I declined `@prisma/engines` without
+   registering what it was for, so the query engine never downloaded and the
+   client never generated. Migrations still worked, because Prisma 7 validates
+   schemas with WebAssembly and needs no binary for that. The failure would have
+   surfaced in 1.4 as a missing import, a month away from its cause. `pnpm
+   install` does not re-run a script it previously skipped; `pnpm rebuild` does.
+
+**What I would do differently:** Check what a version specifier actually
+resolves to before committing it, rather than after. `npm view <pkg> dist-tags`
+takes five seconds and would have caught the release candidate immediately —
+the same shape as the `HypervisorPresent` check that would have saved an hour in
+ADR 0002. Twice now the cost has been an avoidable detour, and both times the
+missing step was one cheap command asking the system what is actually true
+instead of assuming the default was sensible.
+
+The other change: every Prisma command now goes through a named `db:*` script
+rather than being typed directly. Three separate failures in this increment came
+from running `prisma` bare without the environment it needs. Making the correct
+form the only form removes the possibility.
+
+
 ---
 
 ## Reflection
