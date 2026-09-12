@@ -1,61 +1,82 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.2 — database and Prisma
-**Last updated:** 2026-08-29
+**Active increment:** 1.2a — Postgres in a container
+**Last updated:** 2026-08-30
 
 ## Start here next session
 
-Development runs inside a Vagrant VM, not on Windows. See
-`docs/decisions/0002-local-dev-in-a-vagrant-vm.md` and the README.
+The development VM is built and the repo is cloned inside it. No setup left.
 
-```bash
-cd infra/vagrant && vagrant up && vagrant ssh
-cd ~/task-manager
-```
+**On Windows:**
 
-Then increment 1.2 — database and Prisma, in two slices:
+    cd ~/Desktop/task-manager/infra/vagrant
+    vagrant up
+    vagrant ssh
 
-**1.2a — Postgres in a container.** `docker-compose.yml` with one service, a
-named volume and a healthcheck. `DATABASE_URL` added to `.env.example`. Connect
-and prove it is alive.
-*Concept focus:* volumes, and why `docker compose down` and `down -v` are
-different commands.
+**Then inside the VM** — prompt must read `vagrant@task-manager-dev`:
 
-**1.2b — Prisma and the first migration.** Prisma into `apps/api`, schema v1
-(`User`, `RefreshToken`, `Task`, two enums), first migration generated and
-committed, Prisma Studio to inspect it.
-*Concept focus:* migrations as versioned, committed artifacts, and why
-`migrate dev` must never run against a deployed database.
+    cd ~/task-manager
 
-Note that Prisma lands in `apps/api` before NestJS does — Nest arrives in 1.3.
-The package will briefly be a `package.json`, a schema, and nothing else.
+Then increment **1.2a — Postgres in a container**. Explained already, nothing
+written yet:
 
-**Reminder:** `main` is protected. All work goes on a branch and merges via a
-pull request, including small doc changes.
+- `docker-compose.yml` at the repo root: one `postgres:16` service, credentials
+  from `.env`, port 5432 published, data in a **named** volume, a healthcheck
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and `DATABASE_URL` added
+  to `.env.example`
+- `docker compose up -d`, then prove the database is actually reachable
+
+*Concept focus:* named volumes, and why `docker compose down` and
+`docker compose down -v` are different commands typed for different reasons.
+
+The WHAT/WHY/WHERE/HOW was already covered — market stall, lock-up, packing the
+stall away versus emptying the lock-up. No need to repeat it.
+
+Then **1.2b** — Prisma into `apps/api`, schema v1 (`User`, `RefreshToken`,
+`Task`, two enums), first migration generated and committed, Prisma Studio to
+inspect it. Prisma lands before NestJS does; Nest arrives in 1.3.
+
+## Environment rules, learned the hard way
+
+| Path | Machine | Purpose |
+|---|---|---|
+| `~/Desktop/task-manager` | Windows | holds the Vagrantfile. **Never edit code here** |
+| `~/task-manager` | **inside the VM** | where all work happens |
+
+The prompt is the tell: `MINGW64` means Windows, `vagrant@task-manager-dev`
+means the VM. Pasting VM commands into Windows cost an hour once already.
+
+- **One VM running at a time.** 15.7 GB does not stretch to a 4 GB dev VM plus
+  the 2 GB CentOS box plus Windows. `vagrant halt` whichever is not in use. The
+  symptom of getting this wrong is SSH timing out during provisioning.
+- `main` is protected. Everything goes through a branch and a pull request,
+  including small doc changes.
 
 ## Recently completed
 
-**1.1 — repo scaffold.** pnpm workspace with `apps/api` and `apps/web` as
-members, Node 22 and pnpm 11.24.0 pinned, `.gitignore`/`.gitattributes`/`.nvmrc`
-committed before anything else, README and empty `.env.example`. Pushed to
-`github.com/pleasantvik/fullstack`. `main` protected: pull request required,
-force-push and deletion blocked.
+**1.1 — repo scaffold.** pnpm workspace with `apps/api` and `apps/web`, Node 22
+and pnpm 11.24.0 pinned, ignore rules committed before anything else, README,
+empty `.env.example`, `main` protected.
 
-**Development VM.** Ubuntu 22.04 under Vagrant/VirtualBox, provisioned with
-Docker Engine, Node 22, pnpm, git and gh. Defined in `infra/vagrant/`. ADR 0002
-records why, and what it costs.
+**Development environment.** Ubuntu 22.04 under Vagrant/VirtualBox with Docker
+Engine, provisioned reproducibly from `infra/vagrant/provision.sh` and verified
+by a clean `vagrant destroy && vagrant up`. ADR 0002 records the decision, the
+correction to its original reasoning, and the known NEM-backend constraint.
+
+**Posts.** `docs/posts/` established with two drafts. Drafting a post is now
+item 6 of the definition of done.
 
 ## Open questions
 
-- **Windows Memory Integrity must stay off.** With it on, Windows owns the CPU's
-  virtualisation hardware and VirtualBox hangs intermittently during guest boot.
-  Verify with `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` —
-  it must be `False`.
-- VM memory is 4GB. Milestone 4 runs two API instances plus Redis, a worker and
-  Grafana; raise it to 6-8GB before then.
-- The repo is named `fullstack`, the project is `task-manager`. Harmless;
-  `gh repo rename` is available if it grates.
+- Three merged branches still on the remote: `docs/close-1-1`,
+  `infra/vagrant-dev-vm`, `docs/vm-workflow`. Delete when convenient.
+- Empty stray folder at `C:\Users\adeda\task-manager` on Windows. Delete it.
+- Git identity is still set per-repo by hand. A `gitdir:`-based `includeIf`
+  would fix it properly. Parked — less pressing now the VM only does personal
+  work.
+- VM memory is 4GB. Raise to 6-8GB before Milestone 4, which runs two API
+  instances plus Redis, a worker and Grafana.
 - Domain name for production not chosen yet (needed by increment 1.9)
 - AWS account and region not set up yet (needed by increment 1.9)
 
