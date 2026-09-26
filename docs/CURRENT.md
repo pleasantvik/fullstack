@@ -2,7 +2,9 @@
 
 **Active milestone:** 1 — September, the delivery spine
 **Active increment:** 1.3 — NestJS scaffold and config
-**Last updated:** 2026-09-12
+**Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
+are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
+**Last updated:** 2026-09-26
 
 ## Start here next session
 

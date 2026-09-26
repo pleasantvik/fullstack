@@ -5,6 +5,13 @@ Personal project. Dual goal: DevOps depth and backend depth, using one app that 
 
 > Living document. Update the status log as phases land.
 
+> **The month names are ordering, not deadlines.** Each milestone is finished
+> when its concepts are actually understood, and the next one starts then. As of
+> 26 September 2026, Milestone 1 is running into mid-October and everything
+> behind it shifts with it. The sequence is what carries the value — each row of
+> the table below is only possible because the row above it exists — and that
+> stays true whatever the calendar says.
+
 ---
 
 ## 0. The organising principle
