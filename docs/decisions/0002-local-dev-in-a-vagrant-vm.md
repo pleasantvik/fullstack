@@ -89,45 +89,109 @@ and Nest watch mode, and they make Docker build contexts slow.
   `connection refused` with nothing in any log.
 - RAM. 4GB now, rising to 6-8GB by Milestone 4.
 - `vagrant destroy` deletes uncommitted work. GitHub is the source of truth.
-- **Memory Integrity must stay off on this machine.** That is a real reduction
-  in one Windows defence, accepted deliberately. Verify with
-  `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` — must be `False`.
+- **Windows VBS must stay off on this machine** — Memory Integrity, kernel
+  shadow stacks, and Windows Hello Enhanced Sign-in Security. That is a real
+  reduction in two Windows defences, accepted deliberately, and it costs
+  hypervisor-backed protection of biometric sign-in. Reversible; see below.
+  Verify with `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` — must
+  be `False`.
 
-## Known constraint: VirtualBox runs on the NEM backend
+## Resolved 2026-09-26: giving VirtualBox the CPU back
 
-VirtualBox on this machine cannot get the CPU's virtualisation extensions
-directly. It falls back to NEM, running guests through Windows' Hyper-V API:
+For a month, guest boots hung intermittently — roughly one attempt in three,
+stalling early in the kernel log with no further output. Every boot logged:
 
 ```
 HM: HMR3Init: Attempting fall back to NEM: VT-x is not available
 ```
 
 That message means *not available to VirtualBox*, not absent from the firmware.
-Windows Virtualization-Based Security holds the extensions.
+Windows Virtualization-Based Security held the extensions, so VirtualBox ran
+guests through Windows' Hyper-V API (NEM) instead of the CPU directly. `Win32_Processor`
+reports `VirtualizationFirmwareEnabled: False` while that is true — a reading
+caused by the problem, not evidence of it. **Do not "fix" this in the BIOS.**
+VT-x is enabled; disabling it stops VirtualBox working entirely.
 
-Already switched off, and none of it was enough:
+### Two wrong diagnoses, recorded because they were convincing
 
-- Memory Integrity / HVCI
-- Kernel shadow stacks
-- `EnableVirtualizationBasedSecurity` in the registry (verified `0` after reboot)
-- `bcdedit /set hypervisorlaunchtype off` (verified `Off` after reboot)
+1. **"The host-only adapter causes it."** Two boots stalled at exactly the same
+   instruction, right after the kernel renamed the host-only NIC. Compelling,
+   and wrong — the practice VM has a single adapter and stalled at the same
+   point. Removing it was still correct (it was never needed) but it treated a
+   symptom.
+2. **"The e1000 NIC emulation causes it."** Switching to `virtio-net` worked:
+   the boot got past the NIC. It then hung after `Attached SCSI disk` instead.
+   Change the device, and the stall simply moves to whatever the kernel does
+   next. It was never a device.
 
-What still holds VBS on is **Windows Hello Enhanced Sign-in Security**
-(`DeviceGuard\Scenarios\WindowsHello\Enabled = 1`). Disabling it can take
-biometric login with it, which is a daily cost for a background benefit.
-Deliberately not done.
+The lesson both times: a hypothesis that explains the evidence is not the same
+as a hypothesis that has been tested against a case it would fail.
 
-**Consequence:** guest boots occasionally hang, and everything runs somewhat
-slower. Remedy is `vagrant reload`. If a destroy leaves an orphaned folder in
-`VirtualBox VMs\`, delete it before the next `vagrant up` — a suspended VM
-leaves a `.sav` file behind and the next import cannot claim the name.
+### What actually fixed it
 
-Do not "fix" this by touching VT-x in the BIOS. It is enabled; disabling it
-would stop VirtualBox working entirely.
+Four settings, all on the Windows host. Admin PowerShell, then reboot:
+
+```powershell
+$sc = 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios'
+Set-ItemProperty -Path "$sc\WindowsHello"                    -Name Enabled -Value 0 -Type DWord
+Set-ItemProperty -Path "$sc\HypervisorEnforcedCodeIntegrity" -Name Enabled -Value 0 -Type DWord
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' `
+                 -Name EnableVirtualizationBasedSecurity -Value 0 -Type DWord
+bcdedit /set hypervisorlaunchtype off
+```
+
+The last one to fall was **Windows Hello Enhanced Sign-in Security**. Turning off
+Memory Integrity alone is not enough: it removes the *service* using VBS while the
+VBS platform keeps launching the hypervisor.
+
+### Verifying
+
+```powershell
+(Get-CimInstance Win32_ComputerSystem).HypervisorPresent            # want False
+(Get-CimInstance Win32_Processor).VirtualizationFirmwareEnabled     # want True
+```
+
+and in `%USERPROFILE%\VirtualBox VMs\<vm>\Logs\VBox.log`:
+
+```
+HM: Using VT-x implementation 3.0        <- fixed
+HM: Attempting fall back to NEM          <- not fixed
+```
+
+The log is the authority. Symptoms were ambiguous for a month — three boots fine,
+one hung, no pattern. One line in the log settled it in seconds.
+
+### Reversing
+
+Same four with the values inverted (`1`, `1`, `1`, `auto`), plus a reboot. Nothing
+is deleted: the PIN and fingerprint enrolment are untouched, only whether they are
+protected by VBS. Memory Integrity also has a UI toggle under Windows Security →
+Device security → Core isolation.
+
+### Expect Windows to undo one of these
+
+Memory Integrity was switched off on 2026-08-30 and found **on again** on
+2026-09-26, almost certainly re-enabled by a Windows update. If guests start
+hanging again months from now, check
+`DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity` first rather than
+re-debugging from scratch.
+
+### Unrelated cleanup this exposed
+
+- A destroy that leaves an orphaned folder under `VirtualBox VMs\` blocks the next
+  `vagrant up` with `VERR_ALREADY_EXISTS`. A suspended VM leaves a `.sav` file and
+  the new import cannot claim the name. Delete the folder.
+- SSH port collisions: see the pinned `forwarded_port` in the Vagrantfile.
 
 ## Revisit if
 
 
-Memory Integrity needs to be switched back on, or VirtualBox stops being needed
-for anything else. Either would make Docker Desktop or WSL2 the simpler choice
-and this layer removable.
+Windows VBS needs to be switched back on — for work policy, for Windows Hello
+Enhanced Sign-in Security, or because an update forces it — or VirtualBox stops
+being needed for anything else.
+
+Any of those makes WSL2 the simpler choice. WSL2 was weighed on 2026-09-26 and
+rejected only because freeing VT-x was available and also fixed the CentOS,
+ubuntu and vprofile learning VMs. It is a real Linux kernel, so it would not
+cost the production-parity argument that chose a VM in the first place — the
+only thing lost would be `provision.sh` rehearsing the 1.9 EC2 bootstrap.

@@ -31,6 +31,15 @@ Vagrant.configure("2") do |config|
 
   # Forwarded ports, bound to loopback only so nothing is exposed to the
   # local network.
+  # SSH, pinned. Vagrant defaults this to host 2222 and SILENTLY moves it if
+  # another VM already holds that port - which the CentOS and ubuntu learning
+  # boxes all do. The move breaks the ~/.ssh/config entry VS Code Remote-SSH
+  # uses, and presents as "Permission denied (publickey)" because you reach a
+  # real machine that has never seen this key. auto_correct: false makes a
+  # clash fail loudly instead.
+  config.vm.network "forwarded_port", guest: 22, host: 2230, id: "ssh",
+                    host_ip: "127.0.0.1", auto_correct: false
+
   config.vm.network "forwarded_port", guest: 5432, host: 5432, host_ip: "127.0.0.1"  # postgres
   config.vm.network "forwarded_port", guest: 3000, host: 3000, host_ip: "127.0.0.1"  # api
   config.vm.network "forwarded_port", guest: 5173, host: 5173, host_ip: "127.0.0.1"  # vite
