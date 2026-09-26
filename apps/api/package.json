@@ -1,16 +1,29 @@
 {
   "name": "api",
   "private": true,
+  "type": "module",
   "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
     "db:generate": "dotenv -e ../../.env -- prisma generate",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "db:studio": "dotenv -e ../../.env -- prisma studio"
   },
   "devDependencies": {
+    "@nestjs/cli": "^12.0.7",
+    "@types/node": "^22.20.4",
     "dotenv-cli": "^11.0.0",
-    "prisma": "^7.10.0"
+    "prisma": "^7.10.0",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@prisma/client": "^7.10.0"
+    "@nestjs/common": "^12.1.0",
+    "@nestjs/core": "^12.1.0",
+    "@nestjs/platform-express": "^12.1.0",
+    "@prisma/client": "^7.10.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   }
 }
