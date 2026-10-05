@@ -1,10 +1,10 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.3b — config module and fail-fast validation
+**Active increment:** 1.4 — auth module
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
-**Last updated:** 2026-09-26
+**Last updated:** 2026-10-05
 
 ## Start here next session
 
@@ -20,38 +20,46 @@ are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
     docker compose up -d
     docker compose ps        # postgres should report (healthy)
 
-Then increment **1.3b — config module and fail-fast validation**. Not explained
-yet, so it starts with the WHAT/WHY/WHERE/HOW before any code:
+Then increment **1.4 — auth module**. Not explained yet, so it starts with the
+WHAT/WHY/WHERE/HOW before any code:
 
-- `@nestjs/config` with a **schema-validated** env shape. A missing or malformed
-  `DATABASE_URL` crashes at boot with a message naming the variable
-- The hardcoded `3000` in `src/main.ts` becomes a validated `PORT`
-- Global validation pipe
+- Register and login, passwords hashed with argon2 or bcrypt
+- JWT access tokens, short-lived
+- Refresh token rotation, stored hashed in the `refresh_tokens` table that has
+  been sitting empty since 1.2b
+- Guards, and `/auth/me`
 
-*Concept focus:* fail-fast. A process that cannot possibly work should refuse to
-start rather than accept traffic and fail on the first request at 2am.
+*Concept focus:* why refresh tokens are stored hashed, what rotation actually
+prevents, and where a guard sits in the request lifecycle.
 
-1.3 is split into four slices. Docs, post and PR are held until all four land,
-rather than four of each:
-
-| | Ships | Concept focus |
-|---|---|---|
-| 1.3a ✅ | Nest installed, app boots, answers 404 | dependency injection and modules |
-| **1.3b** | validated config, `PORT` from env | fail-fast config |
-| 1.3c | `PrismaService` in Nest's DI, `@prisma/adapter-pg` | connection lifecycle - who opens the pool |
-| 1.3d | Pino structured logging with request IDs | why logs are JSON, and request correlation |
+`JWT_SECRET` joins the manifest in `env.validation.ts` and **must not have a
+default**. A default secret lives in a public repo, so anyone could forge a token
+for any user - and the app would start normally, which is what makes it worse
+than a missing variable.
 
 To run what exists:
 
-    pnpm --filter api start:dev     # then curl -i localhost:3000 -> JSON 404
+    docker compose up -d
+    pnpm --filter api start:dev     # curl -i localhost:3000 -> JSON 404
 
-Two traps already met in 1.3a, both compile-clean and runtime-fatal:
+Rules earned so far, all of which compile clean and fail at runtime:
 
-- **Every relative import needs `.js`**, even though the file is `.ts`. ESM
-  resolves the compiled path. TypeScript will not warn you
-- **An `import` is not a DI registration.** A provider missing from a module's
-  `providers` array compiles fine and fails at boot with "Nest can't resolve
-  dependencies"
+- Every relative import needs `.js`, even though the file is `.ts`
+- An `import` is not a DI registration - a provider needs `providers`, and
+  `exports` + `imports` to cross a module boundary
+- Configuring a thing is not using it - `LoggerModule` needs `useLogger` too
+- Never type `prisma` directly; every Prisma command goes through a `db:*` script
+
+Known quirks, deliberately not fixed:
+
+- `Database connection closed` does not appear on Ctrl+C **in development**.
+  `pino-pretty` runs its transport in a worker thread and the process exits
+  before it flushes. Measured, not assumed - it appears with
+  `NODE_ENV=production`. Production has no transport, so 1.10 will see the drain
+- A fresh clone must run `pnpm --filter api db:generate` before it type-checks.
+  The generated client is gitignored build output - see ADR 0004
+- No formatter or linter yet, so the editor reflows files I wrote and diffs are
+  noisy. Belongs with lint and type-check in 1.8
 
 ## Environment rules, learned the hard way
 
@@ -70,6 +78,13 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.3 — NestJS scaffold and config (a-d).** A Nest 12 application that boots,
+validates its environment before binding a port, holds one Prisma connection
+pool opened at startup and closed on SIGTERM, and logs structured JSON with a
+request id threaded through every line. Serves no routes yet. ADR 0004 records
+the switch to Prisma's `prisma-client` generator after an unrelated `pnpm add`
+silently deleted the generated client.
 
 **1.3a — Nest scaffold.** Nest 12 in `apps/api`, ESM, TypeScript pinned to
 `^6.0.2` because `@nestjs/cli` wants `~6.0.2` while npm's `latest` is 7.0.2.

@@ -14,6 +14,15 @@ export enum NodeEnv {
   Production = "production",
   Test = "test",
 }
+export enum LogLevel {
+  Error = "error",
+  Warn = "warn",
+  Info = "info",
+  Debug = "debug",
+  Trace = "trace",
+  Silent = "silent",
+  Fatal = "fatal",
+}
 
 // The manifest. Every environment variable this service requires, with the
 // shape it must have. Nothing reads configuration that isn't declared here.
@@ -34,6 +43,9 @@ export class EnvironmentVariables {
     message: "DATABASE_URL must be a postgresql:// connection string",
   })
   DATABASE_URL: string;
+
+  @IsEnum(LogLevel)
+  LOG_LEVEL: LogLevel = LogLevel.Info;
 }
 
 // Runs during module initialisation - before the HTTP server binds a port.

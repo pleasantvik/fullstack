@@ -16,6 +16,11 @@ dist/
 build/
 *.tsbuildinfo
 
+# Prisma's generated client. Build output, not source: derived entirely from
+# schema.prisma and reproducible with `pnpm --filter api db:generate`. A fresh
+# clone must run that before anything type-checks. See ADR 0004.
+apps/api/src/generated/
+
 # Logs
 *.log
 npm-debug.log*
@@ -30,3 +35,15 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Fetched by `prisma generate`, which downloads AI-agent instruction files from
+# GitHub and writes one directory per editor - unconditionally, with no opt-out
+# in Prisma 7.10.0. Fetched content pinned by hash in skills-lock.json, not
+# source, and reproduced on the next generate.
+#
+# Scoped to apps/api because that is where the generator runs. A .claude/ at the
+# repo root is project configuration and should still be committable.
+apps/api/.agents/
+apps/api/.claude/
+apps/api/.windsurf/
+apps/api/skills-lock.json

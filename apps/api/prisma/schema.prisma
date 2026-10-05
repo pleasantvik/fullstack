@@ -7,8 +7,17 @@
 // to get the database from where it is to what this file describes, and writes
 // that SQL into prisma/migrations/ as a committed, reviewable artifact.
 
+// Prisma 7's current generator. The legacy `prisma-client-js` wrote the client
+// into node_modules/.prisma, which every `pnpm install` silently deleted -
+// see ADR 0004.
+//
+// `output` is relative to THIS file, so the client lands in src/generated/prisma.
+// It is build output, not source: gitignored, and regenerated in CI (1.8) and
+// in the Docker build (1.7).
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
 }
 
 // Prisma 7 removed `url` from this block. The connection string now lives in

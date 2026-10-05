@@ -207,6 +207,99 @@ from running `prisma` bare without the environment it needs. Making the correct
 form the only form removes the possibility.
 
 
+### 1.3 — NestJS scaffold and config *(2026-10-05)*
+
+Split into four slices: 1.3a scaffold and DI, 1.3b fail-fast config, 1.3c
+PrismaService and connection lifecycle, 1.3d structured logging.
+
+**What I built:** a NestJS 12 application in `apps/api`, ESM, that boots,
+validates its environment before binding a port, holds exactly one Prisma
+connection pool, and logs structured JSON.
+
+*1.3a.* Nest installed and the scaffold hand-picked rather than generated in
+place - `nest new` writes its own `package.json` and would have destroyed the
+`db:*` scripts. Generated it into a throwaway directory instead, read it, and
+copied across the four files that belonged. `AppModule` deliberately empty.
+
+*1.3b.* One schema naming every environment variable the service needs, checked
+during module initialisation. `class-validator` rather than Joi, because the
+roadmap already commits to class-validator for DTOs in 1.5 and the global
+`ValidationPipe` is built on it - two validation libraries doing the same job
+would be a long-term tax. The presence of a default is the optionality marker:
+`PORT` and `LOG_LEVEL` have one, `DATABASE_URL` does not, and `JWT_SECRET` in
+1.4 must not.
+
+*1.3c.* `PrismaService extends PrismaClient`, injected `ConfigService` so the
+connection string is the validated one. Prisma 7 requires a driver adapter;
+`PrismaPg` owns the pool. `$connect()` in `onModuleInit` rather than relying on
+lazy connection, so a wrong password fails at boot - config validation proves
+`DATABASE_URL` is well-formed, not that it works. `PrismaModule` is deliberately
+not global, unlike `ConfigModule`: a module importing it is declaring that it
+touches the database.
+
+*1.3d.* pino via `nestjs-pino`, so framework logs become JSON too. A UUID
+request id that adopts an upstream `X-Request-Id` if one exists - which matters
+once Nginx is in front in 1.9 and a load balancer in Milestone 4 - and echoes it
+back to the caller. `authorization` and `cookie` headers redacted, because
+without that every authenticated request from 1.4 would write its bearer token
+to disk and, in Milestone 5, to a log aggregator.
+
+**What broke, and why:**
+
+1. *An installer prompt nearly signed the project up to a telemetry vendor.*
+   `nest new` asks "Would you like to set up @nestjs/observe?" and the answer
+   defaults to yes. It wires a commercial SaaS into `AppModule` and `main.ts`,
+   wanting an account key. Observability is Milestone 5 and self-hosted - the
+   whole point is building it. Caught only because the scaffold was generated
+   into `/tmp` to be read rather than used.
+2. *`latest` disagreed with the toolchain.* npm's `latest` for TypeScript is
+   7.0.2; `@nestjs/cli` depends on `~6.0.2`. Caught **before** installing this
+   time, by checking rather than assuming - which is the habit ADR 0003 cost me
+   a detour to learn three weeks ago.
+3. *An unrelated install silently deleted the Prisma client.* The legacy
+   `prisma-client-js` generator writes into `node_modules/.prisma`, so
+   `pnpm add @prisma/adapter-pg` destroyed it. The error -
+   `Module '"@prisma/client"' has no exported member 'PrismaClient'` - describes
+   a missing export, not a deleted directory, so it reads like a version
+   problem. ADR 0004 records the switch to the `prisma-client` generator with
+   output inside the source tree.
+4. *`prisma generate` wrote editor config I never asked for.* It fetches AI-agent
+   skill files from GitHub and creates `.agents/`, `.claude/`, `.windsurf/` and
+   `skills-lock.json`, unconditionally, with no opt-out in 7.10.0. A code
+   generation step making a network call and writing config for editors I don't
+   use. Gitignored; the unused two deleted.
+5. *The shutdown log vanished in development.* After 1.3d,
+   `Database connection closed` stopped appearing on Ctrl+C. Two candidate
+   causes: the hook had stopped running, or the log was being lost. Tested it by
+   removing the variable - ran with `NODE_ENV=production`, which disables the
+   `pino-pretty` transport - and the line reappeared. `pino-pretty` runs in a
+   worker thread and the main thread exits before it flushes. Dev-only and
+   cosmetic; production has no transport, so 1.10 will still see the drain.
+   Left as is, deliberately.
+
+**What I would do differently:** *(Adedayo - this section is mine to rewrite)*
+
+The thread running through four of those five is the same: **a tool made a
+decision on my behalf and did not say so.** A default-yes prompt, a dist-tag
+pointing at a pre-release, a generator writing into a directory that another
+command owns, a build step fetching from the network. None of them were bugs.
+All of them were defaults, and a default is a decision someone else made and
+chose not to mention.
+
+The habit that catches all four is the same one ADR 0002 and ADR 0003 already
+pointed at from different directions: before accepting what a tool gives you,
+spend five seconds asking what it actually did. `npm view <pkg> dist-tags`.
+Generate into a throwaway directory and read it. `git status` after any command
+that writes files.
+
+Two process changes this increment, both mine to ask for and worth keeping:
+one file at a time with an explanation before moving on, and - where a pattern
+has already been taught once - instructions instead of code, so I write it
+myself. The second one found a real gap immediately: I could place a module in
+an `imports` array correctly but described the failure as "it won't build",
+when it builds perfectly and fails at boot.
+
+
 ---
 
 ## Reflection
