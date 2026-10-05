@@ -1,7 +1,7 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.3 — NestJS scaffold and config
+**Active increment:** 1.3b — config module and fail-fast validation
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
 **Last updated:** 2026-09-26
@@ -20,24 +20,38 @@ are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
     docker compose up -d
     docker compose ps        # postgres should report (healthy)
 
-Then increment **1.3 — NestJS scaffold and config**. Not explained yet, so it
-starts with the WHAT/WHY/WHERE/HOW before any code:
+Then increment **1.3b — config module and fail-fast validation**. Not explained
+yet, so it starts with the WHAT/WHY/WHERE/HOW before any code:
 
-- NestJS installed into `apps/api`, app module, `main.ts`
-- Config module with **schema-validated** env vars — a missing `DATABASE_URL`
-  crashes at boot with a clear message, not at 2am on the first request
+- `@nestjs/config` with a **schema-validated** env shape. A missing or malformed
+  `DATABASE_URL` crashes at boot with a message naming the variable
+- The hardcoded `3000` in `src/main.ts` becomes a validated `PORT`
 - Global validation pipe
-- Pino structured logging with request IDs
-- A `PrismaService` wiring the generated client into Nest's dependency
-  injection. Prisma 7 needs a driver adapter (`@prisma/adapter-pg`) rather than
-  connecting on its own — that arrives here
 
-*Concept focus:* fail-fast config. Why a process that cannot possibly work
-should refuse to start rather than accept traffic.
+*Concept focus:* fail-fast. A process that cannot possibly work should refuse to
+start rather than accept traffic and fail on the first request at 2am.
 
-Rule earned in 1.2b: **never type `prisma` directly.** Every Prisma command goes
-through a `db:*` script in `apps/api/package.json`, because each one needs
-`dotenv-cli` in front of it to find the repo-root `.env`.
+1.3 is split into four slices. Docs, post and PR are held until all four land,
+rather than four of each:
+
+| | Ships | Concept focus |
+|---|---|---|
+| 1.3a ✅ | Nest installed, app boots, answers 404 | dependency injection and modules |
+| **1.3b** | validated config, `PORT` from env | fail-fast config |
+| 1.3c | `PrismaService` in Nest's DI, `@prisma/adapter-pg` | connection lifecycle - who opens the pool |
+| 1.3d | Pino structured logging with request IDs | why logs are JSON, and request correlation |
+
+To run what exists:
+
+    pnpm --filter api start:dev     # then curl -i localhost:3000 -> JSON 404
+
+Two traps already met in 1.3a, both compile-clean and runtime-fatal:
+
+- **Every relative import needs `.js`**, even though the file is `.ts`. ESM
+  resolves the compiled path. TypeScript will not warn you
+- **An `import` is not a DI registration.** A provider missing from a module's
+  `providers` array compiles fine and fails at boot with "Nest can't resolve
+  dependencies"
 
 ## Environment rules, learned the hard way
 
@@ -56,6 +70,12 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.3a — Nest scaffold.** Nest 12 in `apps/api`, ESM, TypeScript pinned to
+`^6.0.2` because `@nestjs/cli` wants `~6.0.2` while npm's `latest` is 7.0.2.
+Scaffold cherry-picked from `nest new` run in a throwaway directory. Declined
+`@nestjs/observe` - a commercial telemetry SaaS offered as a default-yes prompt;
+observability is Milestone 5 and self-hosted. `AppModule` deliberately empty.
 
 **1.2b — Prisma and schema v1.** `User`, `RefreshToken` and `Task`, two Postgres
 enum types, UUID primary keys, `ON DELETE CASCADE` on both foreign keys. First

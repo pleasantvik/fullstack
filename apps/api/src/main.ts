@@ -1,18 +1,27 @@
+import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import { ConfigService } from '@nestjs/config'
 import { AppModule } from './app.module.js'
+import type { EnvironmentVariables } from './config/env.validation.js'
 
-// The only place in the codebase that says "start".
-//
-// The `.js` on the import is not a mistake. Under Node's ESM resolution you
-// import the path that will exist after compilation, so TypeScript source
-// refers to the JavaScript it becomes.
 async function bootstrap() {
+  // If the environment is invalid, this line throws. Nothing below it runs and
+  // no port is ever bound - the van does not leave the depot.
   const app = await NestFactory.create(AppModule)
 
-  // Hardcoded for now, deliberately. Reading this from validated configuration
-  // is the whole subject of 1.3b - it earns its own slice rather than being
-  // smuggled in here.
-  await app.listen(3000)
+  // Validates incoming request bodies against DTOs. Inert until 1.5, because
+  // there are no DTOs yet. Here because it is bootstrap configuration rather
+  // than a feature.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // strip properties with no decorator on the DTO
+      transform: true, // same string-to-type conversion as the config above
+    }),
+  )
+
+  const config: ConfigService<EnvironmentVariables, true> = app.get(ConfigService)
+
+  await app.listen(config.get('PORT', { infer: true }))
 }
 
 await bootstrap()
