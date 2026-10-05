@@ -6,6 +6,7 @@ import {
   Matches,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from "class-validator";
 
@@ -46,6 +47,24 @@ export class EnvironmentVariables {
 
   @IsEnum(LogLevel)
   LOG_LEVEL: LogLevel = LogLevel.Info;
+
+  // No default, deliberately. A default would live in a public repo, letting
+  // anyone forge a token for any user - and the app would start normally, which
+  // is what makes it worse than a missing variable.
+  //
+  // 32 is a floor, not a target. The signature is an HMAC, and checking a
+  // guessed secret costs one cheap hash - there is no argon2 in the way, so a
+  // short secret makes the password hashing irrelevant. Generate, never type:
+  //   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+  @IsNotEmpty()
+  @MinLength(32)
+  JWT_SECRET: string;
+
+  // Format is checked by @nestjs/jwt at sign time, not here, so an unparseable
+  // value fails on the first login rather than at boot. A deliberate gap in the
+  // fail-fast guarantee: tighten with @Matches if it ever bites.
+  @IsNotEmpty()
+  JWT_ACCESS_TTL: string = "15m";
 }
 
 // Runs during module initialisation - before the HTTP server binds a port.
