@@ -1,11 +1,20 @@
-import { IsEmail, IsString, MaxLength, MinLength } from "class-validator";
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 
-// The contract for POST /auth/register.
-//
-// The global ValidationPipe registered in 1.3b checks every incoming body
-// against the DTO for that route. Until now there were no DTOs, so it did
-// nothing. This is the first.
 export class RegisterDto {
+  // Required here although the column is nullable. Three users predate it and
+  // keep NULL; everyone from now on has one. Widen the database, tighten the
+  // API - not the other way round.
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name: string;
+
   @IsEmail()
   email: string;
 

@@ -56,6 +56,10 @@ export class AuthController {
 
   // The token is the identity. No id is accepted from the caller: that would
   // let anyone read any account.
+  //
+  // The guard's user carries only id and email - what authorisation needs. The
+  // profile is data, so it is fetched rather than widening what every request
+  // in the application drags around.
   @Get("me")
   @ApiBearerAuth()
   @ApiResponse({
@@ -63,6 +67,6 @@ export class AuthController {
     description: "Missing, malformed, expired, or belonging to a deleted user.",
   })
   currentUser(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+    return this.auth.getProfile(user.id);
   }
 }

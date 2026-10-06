@@ -25,6 +25,7 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
+  "name": "Ada Lovelace",
   "email": "{{email}}",
   "password": "{{password}}"
 }
@@ -36,6 +37,7 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
+  "name": "Ada Lovelace",
   "email": "{{email}}",
   "password": "{{password}}"
 }
@@ -47,6 +49,7 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
+  "name": "Grace Hopper",
   "email": "grace@example.com",
   "password": "short"
 }
@@ -58,6 +61,7 @@ POST {{host}}/auth/register
 Content-Type: application/json
 
 {
+  "name": "Grace Hopper",
   "email": "hopper@example.com",
   "password": "{{password}}",
   "isAdmin": true
