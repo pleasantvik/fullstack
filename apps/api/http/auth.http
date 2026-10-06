@@ -15,6 +15,7 @@
 @host = http://localhost:3000
 @email = ada@example.com
 @password = correct-horse-battery
+@id = d7190d21-01fb-4bee-983f-0606f4544118
 
 ###
 # Create the account. 201, and the body must NOT contain passwordHash.
@@ -105,3 +106,23 @@ Content-Type: application/json
   "email": "nobody@example.com",
   "password": "definitely-not-the-password"
 }
+
+###
+# The current user. 200, with the id and email of whoever logged in above.
+#
+# Note what this request does NOT contain: no id in the URL, no body. The token
+# is the identity. Sending an id would let any caller read any account.
+#
+# {{login.accessToken}} comes from the named login request above - that capture
+# is the whole reason for naming it, and why this is not a copy-paste job.
+# @name me
+GET {{host}}/auth/me
+Authorization: Bearer {{login.accessToken}}
+
+###
+# The same request with no Authorization header -> 401.
+#
+# This is the one that proves the guard is guarding. A passing /auth/me on its
+# own only shows the happy path works; it says nothing about whether the route
+# is actually protected.
+GET {{host}}/auth/me

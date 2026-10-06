@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { hash, hashSync, verify } from "@node-rs/argon2";
 import { Prisma } from "../generated/prisma/client.js";
@@ -29,7 +33,10 @@ const ARGON2 = {
 //
 // Without it, "no such user" returns in under a millisecond while a real email
 // takes ~50ms, and anyone can discover who has an account by timing it.
-const ABSENT_USER_HASH = hashSync(randomBytes(32).toString("base64url"), ARGON2);
+const ABSENT_USER_HASH = hashSync(
+  randomBytes(32).toString("base64url"),
+  ARGON2,
+);
 
 @Injectable()
 export class AuthService {
