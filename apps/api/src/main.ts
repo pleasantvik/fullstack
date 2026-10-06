@@ -1,9 +1,10 @@
 import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module.js'
-import type { EnvironmentVariables } from './config/env.validation.js'
+import { NodeEnv, type EnvironmentVariables } from './config/env.validation.js'
 
 async function bootstrap() {
   // Two things happen here.
@@ -41,6 +42,20 @@ async function bootstrap() {
   app.enableShutdownHooks()
 
   const config: ConfigService<EnvironmentVariables, true> = app.get(ConfigService)
+
+  // Not in production: a deployed API need not hand over a map of itself.
+  if (config.get('NODE_ENV', { infer: true }) !== NodeEnv.Production) {
+    const openApi = new DocumentBuilder()
+      .setTitle('Task Manager API')
+      .setDescription('Auth and task management. See docs/ in the repo.')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build()
+
+    SwaggerModule.setup('docs', app, () =>
+      SwaggerModule.createDocument(app, openApi),
+    )
+  }
 
   await app.listen(config.get('PORT', { infer: true }))
 }
