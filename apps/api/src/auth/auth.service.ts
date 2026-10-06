@@ -72,12 +72,13 @@ export class AuthService {
           // register. The unique constraint is on the stored value, and
           // Postgres compares case-sensitively.
           email: dto.email.toLowerCase(),
+          name: dto.name,
           passwordHash,
         },
         // Explicit select, never the whole row. Without this, passwordHash is
         // returned to the client and written to any log that records the
         // response body.
-        select: { id: true, email: true, createdAt: true },
+        select: { id: true, email: true, name: true, createdAt: true },
       });
     } catch (error) {
       // P2002 is Prisma's unique constraint violation - here, the email index.
@@ -192,6 +193,16 @@ export class AuthService {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+  }
+
+  // The guard attaches only what authorisation needs - id and email. Anything a
+  // handler wants as DATA is fetched here instead, so the request object does
+  // not drift into a general-purpose cache of user fields.
+  async getProfile(userId: string) {
+    return this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, createdAt: true },
     });
   }
 }

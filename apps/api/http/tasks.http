@@ -121,7 +121,7 @@ Authorization: Bearer {{login.accessToken}}
 POST {{host}}/auth/register
 Content-Type: application/json
 
-{ "email": "grace@example.com", "password": "correct-horse-battery" }
+{ "name": "Grace Hopper", "email": "grace@example.com", "password": "correct-horse-battery" }
 
 ###
 # @name graceLogin
