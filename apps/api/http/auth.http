@@ -1,0 +1,107 @@
+# Auth module requests.
+#
+# In VS Code with the httpyac extension, each block gets a "Send Request" link.
+# Headlessly:
+#
+#   pnpm exec httpyac send apps/api/http/auth.http --all
+#   pnpm exec httpyac send apps/api/http/auth.http --name login
+#
+# Requires the API running (pnpm --filter api start:dev) and Postgres up.
+#
+# The password below is a local test fixture, not a secret. If these are ever
+# pointed at a deployed environment, move it into a .env file httpyac reads
+# rather than editing it here.
+
+@host = http://localhost:3000
+@email = ada@example.com
+@password = correct-horse-battery
+
+###
+# Create the account. 201, and the body must NOT contain passwordHash.
+# Running this twice is itself a test - see the next block.
+# @name register
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Same email again -> 409. Uniqueness is enforced by the Postgres index from
+# 1.2b, surfaced by catching P2002 - not by a check-then-act read.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Too short -> 400, listing the constraint. Rejected by the ValidationPipe
+# before the service runs, so nothing is hashed and nothing is written.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "grace@example.com",
+  "password": "short"
+}
+
+###
+# A smuggled field -> 201, with isAdmin silently stripped by whitelist: true.
+# Check the users table afterwards: no trace of it anywhere.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "hopper@example.com",
+  "password": "{{password}}",
+  "isAdmin": true
+}
+
+###
+# Log in. 200, not 201 - nothing was created.
+#
+# @name captures the response so later requests can use {{login.accessToken}}
+# instead of you copying tokens around. That pays off in 1.4c, when there is
+# finally a route that demands one.
+#
+# @jwt decodes the token in the output, so you can read your own sub and exp.
+# If httpyac complains about that line, delete it - it is a convenience, not
+# part of the test.
+# @name login
+# @jwt accessToken
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Wrong password -> 401.
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "definitely-not-the-password"
+}
+
+###
+# Email that does not exist -> 401.
+#
+# This response must be byte-for-byte identical to the one above. Same status,
+# same message. If you can tell them apart, the API is telling an attacker
+# which addresses are registered.
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody@example.com",
+  "password": "definitely-not-the-password"
+}

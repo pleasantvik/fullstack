@@ -10,6 +10,7 @@ allowBuilds:
   # generates, and the failure surfaces much later as a missing import.
   '@prisma/engines': true
   prisma: true
+  protobufjs: set this to true or false
 
 # pnpm refuses packages published within the last few days, because a
 # compromised release is most dangerous in its first hours. This is a deliberate
