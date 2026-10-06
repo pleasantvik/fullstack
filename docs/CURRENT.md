@@ -1,10 +1,10 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.4 — auth module
+**Active increment:** 1.5 — tasks module and health endpoint
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
-**Last updated:** 2026-10-05
+**Last updated:** 2026-10-06
 
 ## Start here next session
 
@@ -20,46 +20,46 @@ are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
     docker compose up -d
     docker compose ps        # postgres should report (healthy)
 
-Then increment **1.4 — auth module**. Not explained yet, so it starts with the
-WHAT/WHY/WHERE/HOW before any code:
+Then increment **1.5 — tasks module and health endpoint**. Not explained yet, so
+it starts with the WHAT/WHY/WHERE/HOW before any code:
 
-- Register and login, passwords hashed with argon2 or bcrypt
-- JWT access tokens, short-lived
-- Refresh token rotation, stored hashed in the `refresh_tokens` table that has
-  been sitting empty since 1.2b
-- Guards, and `/auth/me`
+- Task CRUD with DTOs, filtering by status / priority / search / overdue
+- **Ownership enforcement** - the first time authorisation is a separate
+  question from authentication
+- `/health` with a real database probe, built now rather than later
 
-*Concept focus:* why refresh tokens are stored hashed, what rotation actually
-prevents, and where a guard sits in the request lifecycle.
+*Concept focus:* the health endpoint is load-bearing. Docker healthchecks (1.7),
+Nginx (1.9) and all future monitoring hang off it.
 
-`JWT_SECRET` joins the manifest in `env.validation.ts` and **must not have a
-default**. A default secret lives in a public repo, so anyone could forge a token
-for any user - and the app would start normally, which is what makes it worse
-than a missing variable.
+Carry forward from 1.4: `@CurrentUser()` gives the caller's id, and a task query
+must filter on it. An undefined `userId` becomes `where: { userId: undefined }`,
+which Prisma treats as NO filter - returning every user's tasks.
 
 To run what exists:
 
     docker compose up -d
-    pnpm --filter api start:dev     # curl -i localhost:3000 -> JSON 404
+    pnpm --filter api start:dev
+    pnpm exec httpyac send apps/api/http/auth.http --all
+    # docs at http://localhost:3000/docs (non-production only)
 
-Rules earned so far, all of which compile clean and fail at runtime:
+Rules earned so far, all compile-clean and runtime-fatal:
 
 - Every relative import needs `.js`, even though the file is `.ts`
-- An `import` is not a DI registration - a provider needs `providers`, and
+- An `import` is not a DI registration - a provider needs `providers`, plus
   `exports` + `imports` to cross a module boundary
-- Configuring a thing is not using it - `LoggerModule` needs `useLogger` too
+- Configuring a thing is not using it - `LoggerModule` also needs `useLogger`
+- **A handler parameter with no decorator is `undefined`.** Nest cannot guess
+  where an argument comes from
 - Never type `prisma` directly; every Prisma command goes through a `db:*` script
 
 Known quirks, deliberately not fixed:
 
-- `Database connection closed` does not appear on Ctrl+C **in development**.
+- `Database connection closed` does not appear on Ctrl+C in development.
   `pino-pretty` runs its transport in a worker thread and the process exits
-  before it flushes. Measured, not assumed - it appears with
-  `NODE_ENV=production`. Production has no transport, so 1.10 will see the drain
-- A fresh clone must run `pnpm --filter api db:generate` before it type-checks.
-  The generated client is gitignored build output - see ADR 0004
-- No formatter or linter yet, so the editor reflows files I wrote and diffs are
-  noisy. Belongs with lint and type-check in 1.8
+  before it flushes. Measured, not assumed
+- A fresh clone must run `pnpm --filter api db:generate` before it type-checks
+- No formatter or linter yet - belongs with CI in 1.8
+- No absolute session lifetime on refresh token chains. See ADR 0006
 
 ## Environment rules, learned the hard way
 
@@ -78,6 +78,13 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.4 — Auth module (a-d).** Register with argon2id, login returning a
+15-minute access token and a 7-day refresh token, a globally registered guard
+with `@Public()` opt-out, and `GET /auth/me`. Refresh tokens rotate on every use
+and are SHA-256 hashed; presenting a retired one revokes the whole chain. ADRs
+0005 and 0006. Off-roadmap additions: httpyac request files and OpenAPI docs
+at `/docs`.
 
 **1.3 — NestJS scaffold and config (a-d).** A Nest 12 application that boots,
 validates its environment before binding a port, holds one Prisma connection

@@ -300,6 +300,93 @@ an `imports` array correctly but described the failure as "it won't build",
 when it builds perfectly and fails at boot.
 
 
+### 1.4 — Auth module *(2026-10-06)*
+
+Split into four slices plus two additions that are not on the roadmap: httpyac
+request files and OpenAPI docs.
+
+**What I built:** register, login, a global guard, `/auth/me`, and refresh token
+rotation with reuse detection.
+
+*1.4a.* argon2id via `@node-rs/argon2` at OWASP's minimum parameters, prebuilt
+rather than compiled so the Docker build in 1.7 needs no node-gyp. ADR 0005. The
+first DTO, which finally made the `ValidationPipe` from 1.3b do something.
+Uniqueness enforced by the Postgres index and surfaced by catching P2002, not by
+a check-then-act read that would race.
+
+*1.4b.* `JwtModule.registerAsync` taking the secret and lifetime from the
+validated manifest. Verification runs unconditionally against a throwaway hash
+when the email is unknown, so an absent user costs the same as a present one -
+a mitigation rather than a guarantee, since registration already leaks
+enumeration by design. One 401 and one message for both failure modes. The
+payload carries `sub` and nothing else.
+
+*1.4c.* The guard registered via `APP_GUARD` so every route is protected by
+default, with `@Public()` as the opt-out - my choice, on the grounds that I would
+rather wrongly protect a public route and hear about it than wrongly expose a
+private one and not. It looks the user up rather than trusting the token's
+claims, so a deleted account stops working immediately.
+
+*1.4d.* Rotation and reuse detection. The increment this one existed for.
+`refresh_tokens` finally used. SHA-256 rather than argon2, for reasons that are
+the exact inverse of 1.4a's - ADR 0006. The retire step is a conditional
+`updateMany` rather than a read then a write.
+
+*Off-roadmap.* httpyac request files, committed, replacing ad-hoc curl - for the
+same reason `docker-compose.yml` replaced a `docker run` command in 1.2a. And
+`@nestjs/swagger` with the CLI plugin, so schemas are inferred from the DTOs
+rather than restated. Both deliberate additions, neither in the plan.
+
+**What broke, and why:**
+
+1. *I wrote `/auth/me` so the client supplied its own id.* The handler took an
+   `id` parameter and the request body carried one. It compiles, and it is a
+   security bug: anyone could pass someone else's id and read their account.
+   That bug class is called insecure direct object reference, and 1.5 is full of
+   the same shape. The right version is shorter, because the guard had already
+   done the work. I knew what the endpoint should do and could not write it -
+   the gap was `createParamDecorator`, which is a convention you have to have
+   seen, not derived.
+2. *A parameter with no decorator is `undefined`.* Nest cannot guess where a
+   handler argument comes from. That one rule would have caught the bug above
+   without knowing anything about guards.
+3. *I hardcoded a placeholder JWT secret while stuck on the module wiring.* It
+   worked, and it would have been committed to a public repo. Worth noticing how
+   it happened: not carelessness, but needing *something* in the slot to make
+   progress. Which is the argument for `JWT_SECRET` having no default - the app
+   cannot start on a placeholder.
+4. *`inject: [AuthService]` in the JwtModule factory.* Circular:
+   `AuthService` needs `JwtService`, which the factory builds. Nest would have
+   reported it against `AuthModule`, where nothing looks wrong.
+5. *An empty `JWT_SECRET=` in `.env` stopped the app at boot.* The first time
+   fail-fast caught a real mistake rather than one I made deliberately to test
+   it. `@IsNotEmpty()` is what caught it; an empty value is not a missing one.
+6. *pnpm blocked installs twice over undecided build scripts.* `protobufjs` via
+   httpyac's gRPC support, and `@scarf/scarf` via `@nestjs/swagger` - the latter
+   being install-time analytics that reports to a third party. Both declined and
+   recorded. An undecided script is not neutral: pnpm fails the install until
+   you answer.
+
+**What I would do differently:** *(Adedayo - this section is mine to rewrite)*
+
+The thing worth keeping is the shape of the `/auth/me` mistake. Every wiring
+error in this project so far has been the same: it compiles, it runs, and it is
+wrong at runtime with no warning. A missing `.js`, a provider absent from
+`providers`, a configured logger never passed to `useLogger`, a handler
+parameter with no decorator. The habit that catches all of them is asking, of
+any piece of wiring, *"what would tell me if I got this wrong?"* - and when the
+answer is "nothing", testing the failing case rather than the passing one.
+
+That is also what the two negative tests in `auth.http` are for. A passing
+`/auth/me` says nothing about whether the route is protected.
+
+Two process changes, both mine to ask for and worth keeping. Instructions
+instead of code where a pattern has already been taught once - which found the
+`/auth/me` gap immediately, where reading correct code would have hidden it. And
+far fewer comments: explanation belongs in the conversation, not in a file I
+have to read past every day afterwards.
+
+
 ---
 
 ## Reflection
