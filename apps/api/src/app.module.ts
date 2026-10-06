@@ -8,6 +8,7 @@ import {
   type EnvironmentVariables,
 } from "./config/env.validation.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { AuthModule } from "./auth/auth.module.js";
 
 @Module({
   imports: [
@@ -31,7 +32,8 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => {
-        const isDev = config.get("NODE_ENV", { infer: true }) === NodeEnv.Development;
+        const isDev =
+          config.get("NODE_ENV", { infer: true }) === NodeEnv.Development;
 
         return {
           pinoHttp: {
@@ -64,6 +66,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     }),
 
     PrismaModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

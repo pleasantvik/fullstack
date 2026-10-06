@@ -11,6 +11,17 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
 
+  # Arrives as a transitive dependency of httpyac's gRPC support, which this
+  # project does not use - only HTTP requests. Its postinstall generates bundled
+  # files for that feature, so skipping it costs nothing we touch. Recorded as a
+  # decision rather than left undecided, because pnpm keeps asking otherwise.
+  protobufjs: false
+
+  # Install-time analytics: its postinstall reports telemetry about this machine
+  # to a third party. Arrives via @nestjs/swagger. Declined for the same reason
+  # @nestjs/observe was in 1.3a - nothing leaves this project by default.
+  '@scarf/scarf': false
+
 # pnpm refuses packages published within the last few days, because a
 # compromised release is most dangerous in its first hours. This is a deliberate
 # override of that policy for one package: pino-pretty is a dev dependency used

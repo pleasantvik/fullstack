@@ -1,0 +1,143 @@
+# Auth module requests.
+#
+# In VS Code with the httpyac extension, each block gets a "Send Request" link.
+# Headlessly:
+#
+#   pnpm exec httpyac send apps/api/http/auth.http --all
+#   pnpm exec httpyac send apps/api/http/auth.http --name login
+#
+# Requires the API running (pnpm --filter api start:dev) and Postgres up.
+#
+# The password below is a local test fixture, not a secret. If these are ever
+# pointed at a deployed environment, move it into a .env file httpyac reads
+# rather than editing it here.
+
+@host = http://localhost:3000
+@email = ada@example.com
+@password = correct-horse-battery
+@id = d7190d21-01fb-4bee-983f-0606f4544118
+
+###
+# Create the account. 201, and the body must NOT contain passwordHash.
+# Running this twice is itself a test - see the next block.
+# @name register
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Same email again -> 409. Uniqueness is enforced by the Postgres index from
+# 1.2b, surfaced by catching P2002 - not by a check-then-act read.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Too short -> 400, listing the constraint. Rejected by the ValidationPipe
+# before the service runs, so nothing is hashed and nothing is written.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "grace@example.com",
+  "password": "short"
+}
+
+###
+# A smuggled field -> 201, with isAdmin silently stripped by whitelist: true.
+# Check the users table afterwards: no trace of it anywhere.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "hopper@example.com",
+  "password": "{{password}}",
+  "isAdmin": true
+}
+
+###
+# Log in. 200, not 201 - nothing was created.
+#
+# @name captures the response so later requests can use {{login.accessToken}}
+# instead of you copying tokens around. That pays off in 1.4c, when there is
+# finally a route that demands one.
+#
+# @jwt decodes the token in the output, so you can read your own sub and exp.
+# If httpyac complains about that line, delete it - it is a convenience, not
+# part of the test.
+# @name login
+# @jwt accessToken
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Wrong password -> 401.
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "definitely-not-the-password"
+}
+
+###
+# Email that does not exist -> 401.
+#
+# This response must be byte-for-byte identical to the one above. Same status,
+# same message. If you can tell them apart, the API is telling an attacker
+# which addresses are registered.
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody@example.com",
+  "password": "definitely-not-the-password"
+}
+
+###
+# The current user. 200, with the id and email of whoever logged in above.
+#
+# Note what this request does NOT contain: no id in the URL, no body. The token
+# is the identity. Sending an id would let any caller read any account.
+#
+# {{login.accessToken}} comes from the named login request above - that capture
+# is the whole reason for naming it, and why this is not a copy-paste job.
+# @name me
+GET {{host}}/auth/me
+Authorization: Bearer {{login.accessToken}}
+
+###
+# The same request with no Authorization header -> 401.
+#
+# This is the one that proves the guard is guarding. A passing /auth/me on its
+# own only shows the happy path works; it says nothing about whether the route
+# is actually protected.
+GET {{host}}/auth/me
+
+
+### 
+# Refresh the access token. 200, with a new access token and the same refresh
+# token. The new access token is valid for 15 minutes, the refresh token for
+# 7 days. The refresh token is stored in the database, so it can be revoked
+# if the user logs out or the token is compromised.
+#
+# @name refresh
+POST {{host}}/auth/refresh
+Content-Type: application/json  
+
+{
+  "refreshToken": "iJg9SGdor7zxUmTdDRXZxFgKRDOZexvHhpk2M-YdosM"
+}
