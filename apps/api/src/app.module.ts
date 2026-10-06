@@ -7,7 +7,9 @@ import {
   validate,
   type EnvironmentVariables,
 } from "./config/env.validation.js";
+import { HealthModule } from "./health/health.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { TasksModule } from "./tasks/tasks.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 
 @Module({
@@ -67,6 +69,8 @@ import { AuthModule } from "./auth/auth.module.js";
 
     PrismaModule,
     AuthModule,
+    TasksModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

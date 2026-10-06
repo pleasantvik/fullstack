@@ -1,0 +1,222 @@
+# Task requests.
+#
+#   pnpm exec httpyac send apps/api/http/tasks.http --all
+#
+# Requires the API running and a registered ada@example.com (see auth.http).
+
+@host = http://localhost:3000
+@email = ada@example.com
+@password = correct-horse-battery
+
+###
+# @name login
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+# Create a task. 201. The response carries a userId the client never sent.
+# @name create
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{
+  "title": "Write the 1.5 increment note",
+  "description": "What was built, what broke, what I would do differently.",
+  "priority": "HIGH",
+  "dueDate": "2026-10-13T17:00:00.000Z"
+}
+
+###
+# Defaults come from the database, not the client: status TODO, priority MEDIUM.
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{ "title": "A task with nothing but a title" }
+
+###
+# A smuggled userId -> 201, and the task still belongs to the caller.
+# whitelist: true strips it before the handler sees it, and the service spreads
+# the guard's userId last regardless.
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{
+  "title": "Trying to plant this on someone else",
+  "userId": "00000000-0000-0000-0000-000000000000"
+}
+
+###
+# No title -> 400 from the ValidationPipe, before the service runs.
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{ "description": "A description and no title" }
+
+###
+# List. 200 with items, total, page, limit, pages. Only this user's tasks.
+GET {{host}}/tasks
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Paging works and the totals agree with the rows.
+GET {{host}}/tasks?page=1&limit=2
+Authorization: Bearer {{login.accessToken}}
+
+###
+# limit above the ceiling -> 400. Without Max(100), this is a one-request way
+# to make the database read the whole table.
+GET {{host}}/tasks?limit=1000000
+Authorization: Bearer {{login.accessToken}}
+
+###
+# No Authorization header -> 401. These routes were never marked @Public, so
+# the global guard from 1.4c closed them without anyone deciding to.
+GET {{host}}/tasks
+
+###
+# Read one. 200. {{create.id}} comes from the create request above.
+GET {{host}}/tasks/{{create.id}}
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Partial update. 200, with only the named fields changed and updatedAt bumped.
+PATCH {{host}}/tasks/{{create.id}}
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{ "status": "IN_PROGRESS" }
+
+###
+# A well-formed id that does not exist -> 404.
+GET {{host}}/tasks/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{login.accessToken}}
+
+###
+# A malformed id -> 400 from ParseUUIDPipe, before anything reaches Postgres.
+GET {{host}}/tasks/banana
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Delete. 204, no body.
+DELETE {{host}}/tasks/{{create.id}}
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Deleting it again -> 404. Same answer as "never existed", and as "belongs to
+# someone else". The query cannot tell them apart, which is the point.
+DELETE {{host}}/tasks/{{create.id}}
+Authorization: Bearer {{login.accessToken}}
+
+###
+# --- Ownership -------------------------------------------------------------
+# The rest of this file proves tasks are scoped to their owner. 409 on the
+# register is fine after the first run.
+# @name registerGrace
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{ "email": "grace@example.com", "password": "correct-horse-battery" }
+
+###
+# @name graceLogin
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "grace@example.com", "password": "correct-horse-battery" }
+
+###
+# Grace creates a task. 201.
+# @name graceTask
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{graceLogin.accessToken}}
+
+{ "title": "Grace's task, not Ada's" }
+
+###
+# Ada asks for Grace's task BY ITS REAL ID -> 404.
+#
+# The id is correct and the task exists. Ada is fully authenticated. She is not
+# refused by a check - the row is never selected, because userId is in the where
+# clause. And the 404 does not confirm the id is real.
+GET {{host}}/tasks/{{graceTask.id}}
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Ada lists her tasks -> Grace's is absent. Not filtered out. Never selected.
+GET {{host}}/tasks
+Authorization: Bearer {{login.accessToken}}
+
+###
+# --- Filtering -------------------------------------------------------------
+# An overdue task to filter for: due in the past, not DONE.
+# @name overdueTask
+POST {{host}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{login.accessToken}}
+
+{ "title": "Renew the domain", "dueDate": "2026-01-01T00:00:00.000Z" }
+
+###
+# By status. Uses both columns of the (userId, status) index.
+GET {{host}}/tasks?status=TODO
+Authorization: Bearer {{login.accessToken}}
+
+###
+# By priority. Only userId comes from the index here; priority is filtered after.
+GET {{host}}/tasks?priority=HIGH
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Search, deliberately in the wrong case. mode: "insensitive" -> ILIKE, which
+# no B-tree index can help with. Milestone 5 is where that gets fixed properly.
+GET {{host}}/tasks?search=RENEW
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Overdue: dueDate in the past AND status not DONE. Should contain the task
+# created above and nothing with a future or absent due date.
+GET {{host}}/tasks?overdue=true
+Authorization: Bearer {{login.accessToken}}
+
+###
+# overdue=false must NOT filter. With @Type(() => Boolean) this would have
+# returned only overdue tasks, because Boolean("false") is true.
+GET {{host}}/tasks?overdue=false
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Contradictory filters -> 0 items. Done and not-done is empty, not "one of
+# these quietly wins".
+GET {{host}}/tasks?status=DONE&overdue=true
+Authorization: Bearer {{login.accessToken}}
+
+###
+# An invalid enum value -> 400, naming the allowed values.
+GET {{host}}/tasks?status=BANANA
+Authorization: Bearer {{login.accessToken}}
+
+###
+# Filters combine with paging, and total reflects the filter, not the table.
+GET {{host}}/tasks?status=TODO&page=1&limit=2
+Authorization: Bearer {{login.accessToken}}
+
+###
+# --- Health ----------------------------------------------------------------
+# Liveness. No token, no database. 200 as long as the process can respond.
+GET {{host}}/health
+
+###
+# Readiness. 200 while Postgres is reachable, 503 when it is not.
+#
+# Try it: `docker compose stop postgres`, run this (503), then
+# `docker compose start postgres` and run it again (200). /health above stays
+# 200 throughout - which is exactly why a restarter must point at it and not
+# at this one.
+GET {{host}}/health/ready

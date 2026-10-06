@@ -387,6 +387,78 @@ far fewer comments: explanation belongs in the conversation, not in a file I
 have to read past every day afterwards.
 
 
+### 1.5 — Tasks module and health endpoint *(2026-10-06)*
+
+Four slices: 1.5a create and list, 1.5b read/update/delete, 1.5c filtering,
+1.5d health.
+
+**What I built:** task CRUD scoped to the owner, paginated and filterable, plus
+split liveness and readiness endpoints.
+
+*Ownership* is the whole point of the increment. It lives in the `where` clause,
+never in an `if` after the query. A task belonging to someone else is not
+rejected - it is never selected. `userId` comes from the guard and appears in no
+DTO, so `whitelist: true` strips any attempt to send one, and the service
+spreads it last regardless. Three independent protections, any one of which
+would do.
+
+*404, not 403*, for a task that exists but is not yours - ADR 0007. A 403 would
+confirm the id is real.
+
+*Pagination* folded into 1.5a rather than left as a gap: offset-based, with a
+`Max(100)` ceiling, and the page and count in one `$transaction` so the totals
+cannot disagree with the rows.
+
+*Filtering* by status, priority, search and overdue. The `(userId, status)`
+index designed in 1.2b does its intended job for the status filter. Search does
+not use it at all - `contains` with `mode: "insensitive"` becomes `ILIKE
+'%term%'`, and a leading wildcard makes a B-tree index useless. Invisible at
+fifty rows, real at fifty thousand, and the proper fix is a GIN index, which is
+Milestone 5's job.
+
+*Health* split in two. Liveness touches nothing and answers "can this process
+respond". Readiness runs `SELECT 1` and answers "can I serve a real request".
+Pointing a restarter at the second one turns a database outage into a restart
+loop that cannot fix itself.
+
+**What broke, and why:** nothing, and that is worth recording rather than
+glossing.
+
+Several traps were anticipated and avoided rather than hit:
+
+1. *Prisma makes the unsafe version the obvious one.* `findUnique`, `update` and
+   `delete` accept only unique fields in `where`, so they cannot be scoped to an
+   owner. `findUnique({ where: { id } })` compiles, is fast, looks right, and
+   hands any task to anyone holding its id. The safe calls - `findFirst`,
+   `updateMany`, `deleteMany` - are the less obvious ones.
+2. *`@Type(() => Boolean)` would have inverted the `overdue` filter.* Query
+   values are strings and `Boolean("false")` is `true`, so `?overdue=false`
+   would have switched the filter on. Only a test that passes `false`
+   explicitly would ever catch it.
+3. *Route declaration order.* `@Get(":id")` now captures everything after
+   `/tasks/`. A literal route added below it would be matched as an id.
+
+**What I would do differently:** *(Adedayo - this section is mine to rewrite)*
+
+The honest observation about this increment is how it was built. 1.3 and 1.4 I
+wrote large parts of, and the mistakes I made - the `/auth/me` handler taking an
+id, the module wiring, the hardcoded placeholder secret - are the things I
+remember most clearly. 1.5 I asked to have built while I followed, and it went
+faster and more smoothly, and I am less sure what I would be able to reproduce
+from memory.
+
+Both modes have their place. Worth being deliberate about which one I am in,
+rather than drifting into the faster one because the session is already long.
+
+The technical thing worth keeping: **Prisma ignoring `undefined` in a `where`
+clause is the same rule in two places with opposite consequences.** It makes
+optional filters clean (`status: undefined` simply does not narrow). It also
+means an undefined `userId` returns every row in the table. One line apart in
+the same function. That is why `@CurrentUser()` throws rather than returning
+undefined, and it is the kind of thing that only looks obvious once someone has
+pointed at both halves.
+
+
 ---
 
 ## Reflection

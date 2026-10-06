@@ -38,7 +38,7 @@ CI/CD pipeline (lint, test, build)
 |---|---|---|---|
 | Repository | pnpm workspace monorepo, protected `main` | M1 | **Real** |
 | Frontend | React + Vite UI | M1 | Planned |
-| API | NestJS — auth, tasks, validation | M1 | Planned |
+| API | NestJS — auth, tasks, validation | M1 | **Real (local)** |
 | Database | PostgreSQL | M1 | **Real (local)** |
 | Docker | Packaging for api, web, worker | M1 | Planned |
 | CI/CD | GitHub Actions | M1 | Planned |
@@ -61,4 +61,5 @@ CI/CD pipeline (lint, test, build)
 - **2026-09-12** — Increment 1.2b. Schema v1 exists and is applied: `users`, `refresh_tokens` and `tasks`, two Postgres enum types, UUID primary keys and `ON DELETE CASCADE` on both foreign keys. The first migration is a committed artifact in `apps/api/prisma/migrations/`, and the database now carries a `_prisma_migrations` table recording that it ran. Prisma pinned to 7.x — see ADR 0003. Still no application code: nothing reads or writes these tables yet.
 - **2026-10-05** — Increment 1.3 (a-d). The API is a running NestJS application: it boots, validates its environment before binding a port, holds one Prisma connection pool opened at startup and closed on SIGTERM, and logs structured JSON with a request id threaded through every line. It serves **no routes** - a request to `/` returns a 404 from Nest's exception layer. The `API` row below stays *Planned* deliberately: what that row describes is auth, tasks and validation, and none of those exist yet. What exists is the skeleton they will hang from.
 - **2026-10-06** — Increment 1.4 (a-d). Auth works end to end: register with argon2id, login returning a 15-minute access token and a 7-day refresh token, a globally registered guard that protects every route unless it opts out with `@Public()`, and `GET /auth/me`. Refresh tokens rotate on every use and are stored SHA-256 hashed; presenting a retired one revokes the whole chain. `users` and `refresh_tokens`, designed on 12 September, now hold real rows. OpenAPI docs are generated from the DTOs and served at `/docs` outside production. The `API` row below still reads *Planned*: it describes auth **and tasks**, and tasks are 1.5.
+- **2026-10-06** — Increment 1.5 (a-d). Tasks exist: create, list with pagination and filtering by status, priority, search and overdue, read, partial update and delete. Every query is scoped to the owner inside the `where` clause rather than by a check afterwards, so a task belonging to someone else is never selected - and the API returns 404 rather than 403, see ADR 0007. `/health` and `/health/ready` are split: liveness touches nothing, readiness proves Postgres is reachable. The `API` row below finally moves to **Real (local)** - auth, tasks and validation all exist. Still nothing deployed.
 

@@ -1,7 +1,7 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.5 — tasks module and health endpoint
+**Active increment:** 1.6 — frontend
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
 **Last updated:** 2026-10-06
@@ -20,46 +20,52 @@ are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
     docker compose up -d
     docker compose ps        # postgres should report (healthy)
 
-Then increment **1.5 — tasks module and health endpoint**. Not explained yet, so
-it starts with the WHAT/WHY/WHERE/HOW before any code:
+Then increment **1.6 — frontend**. Not explained yet, so it starts with the
+WHAT/WHY/WHERE/HOW before any code:
 
-- Task CRUD with DTOs, filtering by status / priority / search / overdue
-- **Ownership enforcement** - the first time authorisation is a separate
-  question from authentication
-- `/health` with a real database probe, built now rather than later
+- Vite scaffold in `apps/web`, design tokens from `docs/design/ui-spec.md`
+- Routing, login and register pages, board view, task detail modal
+- TanStack Query wiring
 
-*Concept focus:* the health endpoint is load-bearing. Docker healthchecks (1.7),
-Nginx (1.9) and all future monitoring hang off it.
+*Concept focus:* where the auth token lives in a browser, and why every option
+is a compromise. Optimistic updates and rollback on failure.
 
-Carry forward from 1.4: `@CurrentUser()` gives the caller's id, and a task query
-must filter on it. An undefined `userId` becomes `where: { userId: undefined }`,
-which Prisma treats as NO filter - returning every user's tasks.
+**ADR 0006 gets revisited here.** Refresh tokens currently come back in the
+response body. The better answer is an `httpOnly` cookie, and the right
+configuration depends on whether Nginx serves the web app and the API from the
+same origin - which 1.9 decides. Read that ADR before choosing.
+
+Only build the screens `docs/design/ui-spec.md` assigns to Milestone 1.
 
 To run what exists:
 
     docker compose up -d
     pnpm --filter api start:dev
     pnpm exec httpyac send apps/api/http/auth.http --all
+    pnpm exec httpyac send apps/api/http/tasks.http --all
     # docs at http://localhost:3000/docs (non-production only)
+    # health: /health (liveness) and /health/ready (readiness)
 
 Rules earned so far, all compile-clean and runtime-fatal:
 
 - Every relative import needs `.js`, even though the file is `.ts`
-- An `import` is not a DI registration - a provider needs `providers`, plus
-  `exports` + `imports` to cross a module boundary
-- Configuring a thing is not using it - `LoggerModule` also needs `useLogger`
-- **A handler parameter with no decorator is `undefined`.** Nest cannot guess
-  where an argument comes from
+- An `import` is not a DI registration; configuring a thing is not using it
+- A handler parameter with no decorator is `undefined`
+- `findUnique`/`update`/`delete` take only unique `where` clauses, so they
+  cannot be scoped to an owner. Use `findFirst`/`updateMany`/`deleteMany`
+- Prisma ignores `undefined` in a `where` clause - which makes optional filters
+  clean and an undefined `userId` catastrophic
+- Nest matches routes in declaration order: literal segments before `:id`
 - Never type `prisma` directly; every Prisma command goes through a `db:*` script
 
 Known quirks, deliberately not fixed:
 
-- `Database connection closed` does not appear on Ctrl+C in development.
-  `pino-pretty` runs its transport in a worker thread and the process exits
-  before it flushes. Measured, not assumed
+- `Database connection closed` does not appear on Ctrl+C in development
 - A fresh clone must run `pnpm --filter api db:generate` before it type-checks
 - No formatter or linter yet - belongs with CI in 1.8
-- No absolute session lifetime on refresh token chains. See ADR 0006
+- No absolute session lifetime on refresh token chains (ADR 0006)
+- Search uses `ILIKE '%term%'`, which no B-tree index helps. Milestone 5
+- No tests yet. 1.8 is where CI needs something to run
 
 ## Environment rules, learned the hard way
 
@@ -78,6 +84,11 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.5 — Tasks module and health endpoint (a-d).** Task CRUD scoped to the owner
+inside the `where` clause, paginated, filterable by status, priority, search and
+overdue. 404 rather than 403 for a task that is not yours - ADR 0007. `/health`
+and `/health/ready` split so a database outage cannot become a restart loop.
 
 **1.4 — Auth module (a-d).** Register with argon2id, login returning a
 15-minute access token and a 7-day refresh token, a globally registered guard
