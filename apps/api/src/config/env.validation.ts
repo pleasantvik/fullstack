@@ -65,6 +65,20 @@ export class EnvironmentVariables {
   // fail-fast guarantee: tighten with @Matches if it ever bites.
   @IsNotEmpty()
   JWT_ACCESS_TTL: string = "15m";
+
+  // How long a refresh token stays valid. Long, because a refresh token CAN be
+  // revoked - unlike an access token, it is a row in refresh_tokens.
+  //
+  // Not a session limit. Every refresh issues a new token with a fresh 7 days,
+  // so the window slides: this is seven days of INACTIVITY, and someone who
+  // opens the app weekly is never logged out.
+  //
+  // Known gap: a thief who keeps refreshing slides the window too. Reuse
+  // detection catches them the moment the real user refreshes - but if that
+  // user has walked away, nothing collides. The usual fix is a second,
+  // absolute lifetime on the token chain. Not built.
+  @IsNotEmpty()
+  JWT_REFRESH_TTL: string = "7d";
 }
 
 // Runs during module initialisation - before the HTTP server binds a port.

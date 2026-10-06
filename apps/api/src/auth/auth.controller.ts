@@ -12,6 +12,7 @@ import { LoginDto } from "./dto/login.dto.js";
 import { CurrentUser } from "./decorators/current-user.decorator.js";
 import { Public } from "./decorators/public.decorator.js";
 import type { AuthenticatedUser } from "./guards/jwt-auth.guard.js";
+import { RefreshDto } from "./dto/refresh.dto.js";
 
 // Controllers are the edge of the system: route in, call a service, return what
 // it gives back. No hashing, no database, no business rules. When this has
@@ -61,5 +62,12 @@ export class AuthController {
   @Get("me")
   currentUser(@CurrentUser() user: AuthenticatedUser) {
     return user;
+  }
+
+  @Public()
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  refresh(@Body() dto: RefreshDto) {
+    return this.auth.refresh(dto);
   }
 }

@@ -126,3 +126,18 @@ Authorization: Bearer {{login.accessToken}}
 # own only shows the happy path works; it says nothing about whether the route
 # is actually protected.
 GET {{host}}/auth/me
+
+
+### 
+# Refresh the access token. 200, with a new access token and the same refresh
+# token. The new access token is valid for 15 minutes, the refresh token for
+# 7 days. The refresh token is stored in the database, so it can be revoked
+# if the user logs out or the token is compromised.
+#
+# @name refresh
+POST {{host}}/auth/refresh
+Content-Type: application/json  
+
+{
+  "refreshToken": "iJg9SGdor7zxUmTdDRXZxFgKRDOZexvHhpk2M-YdosM"
+}

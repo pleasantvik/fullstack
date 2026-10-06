@@ -44,6 +44,9 @@ importers:
       class-validator:
         specifier: ^0.15.1
         version: 0.15.1
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
       nestjs-pino:
         specifier: ^5.3.1
         version: 5.3.1(@nestjs/common@12.1.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.1.0)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
@@ -63,6 +66,9 @@ importers:
       '@nestjs/cli':
         specifier: ^12.0.7
         version: 12.0.7(@types/node@22.20.4)
+      '@types/ms':
+        specifier: ^2.1.0
+        version: 2.1.0
       '@types/node':
         specifier: ^22.20.4
         version: 22.20.4

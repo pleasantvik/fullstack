@@ -1,14 +1,18 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   ConflictException,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { hash, hashSync, verify } from "@node-rs/argon2";
+import ms, { type StringValue } from "ms";
 import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import type { EnvironmentVariables } from "../config/env.validation.js";
 import type { LoginDto } from "./dto/login.dto.js";
+import type { RefreshDto } from "./dto/refresh.dto.js";
 import type { RegisterDto } from "./dto/register.dto.js";
 
 // OWASP's minimum recommended argon2id parameters.
@@ -43,6 +47,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -117,8 +122,76 @@ export class AuthService {
     // It also keeps the token honest. Anything copied in here is a snapshot of
     // the world when the token was issued, and stays true to the API for the
     // token's whole life, even after the real value changes.
+    return this.issueTokens(user.id);
+  }
+
+  async refresh(dto: RefreshDto) {
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: this.hashToken(dto.refreshToken) },
+      select: { id: true, userId: true, expiresAt: true, revokedAt: true },
+    });
+
+    if (!stored) {
+      throw new UnauthorizedException();
+    }
+
+    // A token that was already retired is a second copy in circulation. We
+    // cannot tell which holder is the real user, so neither keeps anything.
+    if (stored.revokedAt) {
+      await this.revokeAll(stored.userId);
+      throw new UnauthorizedException();
+    }
+
+    if (stored.expiresAt <= new Date()) {
+      throw new UnauthorizedException();
+    }
+
+    // Conditional update rather than read-then-write: two requests racing with
+    // the same token both passed the check above, and the database decides
+    // which one actually retires it. The loser sees count 0, which is reuse.
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: { id: stored.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    if (count === 0) {
+      await this.revokeAll(stored.userId);
+      throw new UnauthorizedException();
+    }
+
+    return this.issueTokens(stored.userId);
+  }
+
+  private async issueTokens(userId: string) {
+    const refreshToken = randomBytes(32).toString("base64url");
+    const ttl = this.config.get("JWT_REFRESH_TTL", { infer: true });
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash: this.hashToken(refreshToken),
+        expiresAt: new Date(Date.now() + ms(ttl as StringValue)),
+      },
+    });
+
     return {
-      accessToken: await this.jwt.signAsync({ sub: user.id }),
+      accessToken: await this.jwt.signAsync({ sub: userId }),
+      refreshToken,
     };
+  }
+
+  // SHA-256, not argon2. argon2 is slow because passwords are guessable; a
+  // 32-byte random token has nothing to guess. And argon2 salts every hash, so
+  // the same token would hash differently each time and could never be looked
+  // up - this has to be an indexed equality match.
+  private hashToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
+  }
+
+  private async revokeAll(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 }
