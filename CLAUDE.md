@@ -8,10 +8,11 @@ Read this file at the start of every session. Then read `docs/CURRENT.md` to fin
 
 A task manager application built by Adedayo as a **personal learning project**, running September 2026 to January 2027.
 
-Two goals run together:
+Three goals run together:
 
 1. Learn DevOps end to end — packaging, CI/CD, cloud infrastructure, observability, scaling
 2. Deepen backend engineering — data modelling, auth, async processing, performance
+3. Sharpen frontend engineering to interview depth — Core Web Vitals (LCP, CLS, INP), optimisation, and browser security — learned by measuring in DevTools, not by description
 
 The app is the vehicle, not the point. Features are chosen because of the infrastructure they force us to confront, not because the product needs them.
 
@@ -93,6 +94,7 @@ Only then, write the code.
 ### After the code
 
 - Point out the two or three lines that carry the real weight, and say why they matter
+- For frontend work that touches performance or security, show me how to measure it: a baseline, one change, a second measurement. A number I watched move beats an explanation I nodded at
 - Name one thing that will bite me later if I get it wrong
 - Ask me one question that checks whether I actually followed. Wait for my answer before continuing.
 

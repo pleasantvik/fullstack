@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* Tokens from docs/design/ui-spec.md. Light values here, dark values below.
+   Components use semantic utilities - bg-surface, text-text-muted - and never
+   write `dark:`, so dark mode cannot be forgotten on a single element. */
+:root {
+  /* Native form controls and scrollbars follow the active scheme too. */
+  color-scheme: light dark;
+
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f2;
+  --border: #e5e5e1;
+  --text: #1c1c1a;
+  --text-muted: #6b6b66;
+  --accent: #2563eb;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b;
+    --surface: #232326;
+    --surface-muted: #2a2a2e;
+    --border: #33333a;
+    --text: #f4f4f2;
+    --text-muted: #9c9ca3;
+    --accent: #3b82f6;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --success: #22c55e;
+  }
+}
+
+/* `inline` keeps var(--bg) in the generated CSS instead of resolving it at build
+   time - without it, the colour is baked in and dark mode never switches. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+}
+
+/* Tailwind's defaults already match the rest of the spec: the 4px spacing scale,
+   rounded-lg (8px) and rounded-xl (12px), and a system font stack. Only the 13px
+   column-header size is missing. */
+@theme {
+  --text-label: 0.8125rem;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
