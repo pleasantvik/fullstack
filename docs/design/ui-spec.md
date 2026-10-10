@@ -10,7 +10,9 @@ The design system is established in Milestone 1 and **extended, never replaced**
 
 ### Colour
 
-Figma holds the light values only — the plan there is capped at one variable mode. The dark ramp lives in `tailwind.config.js` and is applied with Tailwind's `dark:` variants. If you go looking for a dark mode in the Figma file, that's why it isn't there.
+Figma holds the light values only — the plan there is capped at one variable mode. If you go looking for a dark mode in the Figma file, that's why it isn't there.
+
+Both ramps live in `apps/web/src/index.css` (Tailwind 4, which configures in CSS — there is no `tailwind.config.js`). Light values sit on `:root`, dark values under `@media (prefers-color-scheme: dark)`, and `@theme inline` maps them to utilities. Components use the semantic names — `bg-surface`, `text-text-muted` — and **never write `dark:`**: the variables switch underneath them, so dark mode can't be forgotten on a single element. *Amended 2026-10-10, increment 1.6a.*
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
