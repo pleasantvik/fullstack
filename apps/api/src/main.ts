@@ -43,6 +43,21 @@ async function bootstrap() {
 
   const config: ConfigService<EnvironmentVariables, true> = app.get(ConfigService)
 
+  // One explicit origin. Never `origin: true`, which reflects whatever Origin
+  // the request sends: it reads like an allow-list and behaves like "*" - and
+  // unlike "*", browsers permit it alongside credentials.
+  app.enableCors({
+    origin: config.get('WEB_ORIGIN', { infer: true }),
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    // Cross-origin JavaScript can read only a small safelisted set of response
+    // headers. Without this, the frontend cannot see the request id from 1.3d.
+    exposedHeaders: ['X-Request-Id'],
+    // Every authenticated call is preflighted. Caching the answer saves an
+    // extra round trip per request; Chromium caps this at 2 hours anyway.
+    maxAge: 7200,
+  })
+
   // Not in production: a deployed API need not hand over a map of itself.
   if (config.get('NODE_ENV', { infer: true }) !== NodeEnv.Production) {
     const openApi = new DocumentBuilder()
