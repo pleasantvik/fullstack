@@ -11,7 +11,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import type { AuthenticatedUser } from "../auth/guards/jwt-auth.guard.js";
 import { CreateTaskDto } from "./dto/create-task.dto.js";
@@ -22,7 +22,7 @@ import { TasksService } from "./tasks.service.js";
 // No @Public anywhere: the guard registered in 1.4c protects every route by
 // default, so these are already closed.
 @ApiTags("tasks")
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller("tasks")
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}

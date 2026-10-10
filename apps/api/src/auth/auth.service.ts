@@ -12,7 +12,6 @@ import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { EnvironmentVariables } from "../config/env.validation.js";
 import type { LoginDto } from "./dto/login.dto.js";
-import type { RefreshDto } from "./dto/refresh.dto.js";
 import type { RegisterDto } from "./dto/register.dto.js";
 
 // OWASP's minimum recommended argon2id parameters.
@@ -126,9 +125,13 @@ export class AuthService {
     return this.issueTokens(user.id);
   }
 
-  async refresh(dto: RefreshDto) {
+  async refresh(refreshToken: string | undefined) {
+    if (!refreshToken) {
+      throw new UnauthorizedException();
+    }
+
     const stored = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash: this.hashToken(dto.refreshToken) },
+      where: { tokenHash: this.hashToken(refreshToken) },
       select: { id: true, userId: true, expiresAt: true, revokedAt: true },
     });
 
@@ -161,6 +164,23 @@ export class AuthService {
     }
 
     return this.issueTokens(stored.userId);
+  }
+
+  // Never throws. Logout's job is to leave you logged out, and if the token is
+  // missing, expired or already revoked, you already are.
+  //
+  // Deliberately NOT reuse detection: a stale tab whose token was rotated by
+  // another tab would present a revoked one here, and treating that as theft
+  // would log the user out of every device for closing an old tab.
+  async logout(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) {
+      return;
+    }
+
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash: this.hashToken(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private async issueTokens(userId: string) {

@@ -1,7 +1,7 @@
 # 0006 — Refresh token storage, hashing, and transport
 
 **Date:** 2026-10-06
-**Status:** Accepted, with a planned revisit in Milestone 1.6
+**Status:** Accepted. The transport section is **superseded by ADR 0008** (2026-10-10): both tokens now travel in httpOnly cookies. Token format and hashing below still stand.
 
 ## Context
 

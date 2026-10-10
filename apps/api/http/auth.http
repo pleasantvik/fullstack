@@ -1,26 +1,21 @@
 # Auth module requests.
 #
-# In VS Code with the httpyac extension, each block gets a "Send Request" link.
-# Headlessly:
-#
 #   pnpm exec httpyac send apps/api/http/auth.http --all
-#   pnpm exec httpyac send apps/api/http/auth.http --name login
 #
-# Requires the API running (pnpm --filter api start:dev) and Postgres up.
+# Tokens travel only in httpOnly cookies, which httpyac's cookie jar stores and
+# sends automatically - the same thing a browser does. No request below sets an
+# Authorization header, and no response body ever contains a token.
 #
-# The password below is a local test fixture, not a secret. If these are ever
-# pointed at a deployed environment, move it into a .env file httpyac reads
-# rather than editing it here.
+# The jar holds ONE identity for localhost. Logging in replaces whoever was
+# logged in before, exactly as in a browser.
 
 @host = http://localhost:3000
 @email = ada@example.com
 @password = correct-horse-battery
-@id = d7190d21-01fb-4bee-983f-0606f4544118
 
 ###
-# Create the account. 201, and the body must NOT contain passwordHash.
-# Running this twice is itself a test - see the next block.
-# @name register
+# Create the account. 201 with id, email, name and createdAt - no passwordHash.
+# 409 after the first run, which is itself the next test.
 POST {{host}}/auth/register
 Content-Type: application/json
 
@@ -31,8 +26,7 @@ Content-Type: application/json
 }
 
 ###
-# Same email again -> 409. Uniqueness is enforced by the Postgres index from
-# 1.2b, surfaced by catching P2002 - not by a check-then-act read.
+# Same email again -> 409.
 POST {{host}}/auth/register
 Content-Type: application/json
 
@@ -43,8 +37,7 @@ Content-Type: application/json
 }
 
 ###
-# Too short -> 400, listing the constraint. Rejected by the ValidationPipe
-# before the service runs, so nothing is hashed and nothing is written.
+# Too short -> 400 from the ValidationPipe, before anything is hashed.
 POST {{host}}/auth/register
 Content-Type: application/json
 
@@ -55,8 +48,7 @@ Content-Type: application/json
 }
 
 ###
-# A smuggled field -> 201, with isAdmin silently stripped by whitelist: true.
-# Check the users table afterwards: no trace of it anywhere.
+# A smuggled field -> 201, isAdmin silently stripped by whitelist: true.
 POST {{host}}/auth/register
 Content-Type: application/json
 
@@ -68,17 +60,13 @@ Content-Type: application/json
 }
 
 ###
-# Log in. 200, not 201 - nothing was created.
+# Log in -> 204 and an EMPTY body. Read the Set-Cookie headers instead:
 #
-# @name captures the response so later requests can use {{login.accessToken}}
-# instead of you copying tokens around. That pays off in 1.4c, when there is
-# finally a route that demands one.
+#   access_token=...;  Path=/;     HttpOnly; Secure; SameSite=Strict
+#   refresh_token=...; Path=/auth; HttpOnly; Secure; SameSite=Strict
 #
-# @jwt decodes the token in the output, so you can read your own sub and exp.
-# If httpyac complains about that line, delete it - it is a convenience, not
-# part of the test.
-# @name login
-# @jwt accessToken
+# If a token ever appears in the body, JavaScript could read it and httpOnly is
+# for nothing.
 POST {{host}}/auth/login
 Content-Type: application/json
 
@@ -98,11 +86,7 @@ Content-Type: application/json
 }
 
 ###
-# Email that does not exist -> 401.
-#
-# This response must be byte-for-byte identical to the one above. Same status,
-# same message. If you can tell them apart, the API is telling an attacker
-# which addresses are registered.
+# Unknown email -> 401, byte-for-byte identical to the one above.
 POST {{host}}/auth/login
 Content-Type: application/json
 
@@ -112,36 +96,42 @@ Content-Type: application/json
 }
 
 ###
-# The current user. 200, with the id and email of whoever logged in above.
-#
-# Note what this request does NOT contain: no id in the URL, no body. The token
-# is the identity. Sending an id would let any caller read any account.
-#
-# {{login.accessToken}} comes from the named login request above - that capture
-# is the whole reason for naming it, and why this is not a copy-paste job.
-# @name me
+# The current user -> 200. No header: the access cookie from login is sent by
+# the jar. If this is a 401, the jar declined to store or send a Secure cookie
+# over http - see the note in auth-cookies.ts.
 GET {{host}}/auth/me
-Authorization: Bearer {{login.accessToken}}
 
 ###
-# The same request with no Authorization header -> 401.
-#
-# This is the one that proves the guard is guarding. A passing /auth/me on its
-# own only shows the happy path works; it says nothing about whether the route
-# is actually protected.
+# The same request with the jar switched off -> 401. Proves the guard is
+# guarding rather than the route merely working.
+# @no-cookie-jar
 GET {{host}}/auth/me
 
-
-### 
-# Refresh the access token. 200, with a new access token and the same refresh
-# token. The new access token is valid for 15 minutes, the refresh token for
-# 7 days. The refresh token is stored in the database, so it can be revoked
-# if the user logs out or the token is compromised.
-#
-# @name refresh
+###
+# Rotate -> 204 and two new Set-Cookie headers. No body.
 POST {{host}}/auth/refresh
-Content-Type: application/json  
 
-{
-  "refreshToken": "iJg9SGdor7zxUmTdDRXZxFgKRDOZexvHhpk2M-YdosM"
-}
+###
+# Still authenticated after rotation, with the new access cookie.
+GET {{host}}/auth/me
+
+###
+# Log out -> 204. The Set-Cookie headers now clear both cookies: empty values,
+# an Expires date in the past, and the SAME paths they were set with - which is
+# why auth-cookies.ts uses one options object for setting and clearing.
+POST {{host}}/auth/logout
+
+###
+# Logged out -> 401. The access cookie is gone from the jar.
+GET {{host}}/auth/me
+
+###
+# Refresh after logout -> 401. The cookie is gone AND the token behind it was
+# revoked server-side - logout did both, which is why it needs a server
+# endpoint at all.
+POST {{host}}/auth/refresh
+
+###
+# Logging out again -> 204, not an error. Logout's job is to leave you logged
+# out, and you already are.
+POST {{host}}/auth/logout
