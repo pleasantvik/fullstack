@@ -8,11 +8,13 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "db:generate": "dotenv -e ../../.env -- prisma generate",
-    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev && pnpm run db:generate",
     "db:studio": "dotenv -e ../../.env -- prisma studio"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.7",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
     "@types/ms": "^2.1.0",
     "@types/node": "^22.20.4",
     "dotenv-cli": "^11.0.0",
@@ -32,6 +34,7 @@
     "@prisma/client": "^7.10.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "cookie-parser": "^1.4.7",
     "ms": "^2.1.3",
     "nestjs-pino": "^5.3.1",
     "pino": "^10.4.0",

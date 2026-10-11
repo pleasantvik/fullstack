@@ -1,5 +1,6 @@
-import { plainToInstance } from "class-transformer";
+import { plainToInstance, Transform } from "class-transformer";
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -79,6 +80,34 @@ export class EnvironmentVariables {
   // absolute lifetime on the token chain. Not built.
   @IsNotEmpty()
   JWT_REFRESH_TTL: string = "7d";
+
+  // The one origin allowed to read this API's responses from a browser.
+  //
+  // The default is safe because it fails CLOSED: forget to set this in
+  // production and the real frontend is refused - loudly broken, fixed in
+  // minutes. A default of "*" would fail OPEN, and nobody would ever notice.
+  //
+  // The regex rejects a trailing slash. Browsers never send one in the Origin
+  // header, so "http://localhost:5173/" would never match and every request
+  // would be refused while the config looked plainly correct.
+  @IsNotEmpty()
+  @Matches(/^https?:\/\/[^/\s]+$/, {
+    message:
+      "WEB_ORIGIN must be an origin - scheme://host[:port], with no path and no trailing slash",
+  })
+  WEB_ORIGIN: string = "http://localhost:5173";
+
+  // Exists only because httpyac's cookie jar follows RFC 6265 to the letter and
+  // will not send a Secure cookie over plain http - even to localhost. Browsers
+  // grant localhost an exception; tools do not. Set COOKIE_SECURE=false in a
+  // LOCAL .env only.
+  //
+  // Reads the raw string rather than relying on implicit conversion, which would
+  // turn "false" into true. And only the exact string "false" disables it - a
+  // typo, an empty value or an absent variable all stay secure.
+  @Transform(({ obj }) => obj.COOKIE_SECURE !== "false")
+  @IsBoolean()
+  COOKIE_SECURE: boolean = true;
 }
 
 // Runs during module initialisation - before the HTTP server binds a port.

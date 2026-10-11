@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import cookieParser from 'cookie-parser'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module.js'
 import { NodeEnv, type EnvironmentVariables } from './config/env.validation.js'
@@ -43,13 +44,39 @@ async function bootstrap() {
 
   const config: ConfigService<EnvironmentVariables, true> = app.get(ConfigService)
 
+  // One explicit origin. Never `origin: true`, which reflects whatever Origin
+  // the request sends: it reads like an allow-list and behaves like "*" - and
+  // unlike "*", browsers permit it alongside credentials.
+  // Populates req.cookies. Without it the auth cookies arrive and nothing can
+  // read them.
+  app.use(cookieParser())
+
+  app.enableCors({
+    origin: config.get('WEB_ORIGIN', { infer: true }),
+    // Without this the browser silently discards Set-Cookie on a cross-origin
+    // response, and never sends cookies on one. Only legal because origin is a
+    // single explicit value - browsers reject credentials alongside "*".
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    // No Authorization: the token travels in a cookie now. A side effect is
+    // that plain GETs become simple requests and are no longer preflighted.
+    allowedHeaders: ['Content-Type'],
+    // Cross-origin JavaScript can read only a small safelisted set of response
+    // headers. Without this, the frontend cannot see the request id from 1.3d.
+    exposedHeaders: ['X-Request-Id'],
+    // JSON bodies are still preflighted. Chromium caps this cache at 2 hours.
+    maxAge: 7200,
+  })
+
   // Not in production: a deployed API need not hand over a map of itself.
   if (config.get('NODE_ENV', { infer: true }) !== NodeEnv.Production) {
     const openApi = new DocumentBuilder()
       .setTitle('Task Manager API')
       .setDescription('Auth and task management. See docs/ in the repo.')
       .setVersion('1.0')
-      .addBearerAuth()
+      // The name matters: with no argument it documents Express-session's
+      // `connect.sid`, a cookie this API never sets.
+      .addCookieAuth('access_token')
       .build()
 
     SwaggerModule.setup('docs', app, () =>

@@ -7,6 +7,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { ACCESS_COOKIE } from "../auth-cookies.js";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator.js";
 
 // What the rest of the application is allowed to know about the caller. Not the
@@ -16,10 +17,10 @@ export interface AuthenticatedUser {
   email: string;
 }
 
-// Only the shape this guard touches. Typing it locally avoids pulling in
-// @types/express for two fields.
+// Only the fields this guard touches - narrower than Express's Request, so it
+// documents exactly what the guard depends on.
 type RequestWithUser = {
-  headers: { authorization?: string };
+  cookies?: Record<string, string | undefined>;
   user?: AuthenticatedUser;
 };
 
@@ -42,10 +43,10 @@ export class JwtAuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
 
-    // "Bearer <token>". Anything else - a bare token, Basic auth, a missing
-    // header - is not a near miss worth explaining, it is a 401.
-    const [scheme, token] = request.headers.authorization?.split(" ") ?? [];
-    if (scheme !== "Bearer" || !token) {
+    // httpOnly, so no JavaScript - ours or an attacker's - ever saw this value.
+    // `cookies` is undefined unless cookie-parser is registered in main.ts.
+    const token = request.cookies?.[ACCESS_COOKIE];
+    if (!token) {
       throw new UnauthorizedException();
     }
 
