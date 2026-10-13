@@ -49,10 +49,34 @@
   --color-success: var(--success);
 }
 
-/* Tailwind's defaults already match the rest of the spec: the 4px spacing scale,
-   rounded-lg (8px) and rounded-xl (12px), and a system font stack. Only the 13px
-   column-header size is missing. */
+/* Self-hosted, Latin only, the spec's two weights. Referenced from src/ rather
+   than public/ so the build fingerprints the file names and they can be cached
+   forever.
+
+   `swap`, not `block`: text is never hidden, so LCP can never wait on the font.
+   Swapping causes no layout shift only because every text utility also sets a
+   line-height - a font change can alter widths, never heights. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-500.woff2") format("woff2");
+}
+
+/* Tailwind's defaults already match the rest of the spec: the 4px spacing scale
+   and rounded-lg (8px) and rounded-xl (12px). Only the font and the 13px
+   column-header size are added. */
 @theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --text-label: 0.8125rem;
 }
 
