@@ -1,18 +1,24 @@
 import { useLogout } from "../auth/use-logout";
 import { useMe } from "../auth/use-me";
+import { TaskTable } from "../tasks/task-table";
 
-// Placeholder until 1.6g. The guard guarantees a user here; TypeScript can't
-// know that, hence the optional chaining.
+// The table view only, for now. The top bar and the Board / Table toggle arrive
+// in 1.6g. The guard guarantees a user here; TypeScript can't know that, hence
+// the optional chaining.
 export function BoardPage() {
   const { data: user } = useMe();
   const { logout, isPending, error } = useLogout();
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="mx-auto max-w-5xl p-8">
       <h1 className="text-xl font-medium">Board</h1>
       <p className="mt-1 text-sm text-text-muted">
         Logged in as {user?.name ?? user?.email}
       </p>
+
+      <div className="mt-6">
+        <TaskTable />
+      </div>
 
       <button
         type="button"
