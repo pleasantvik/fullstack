@@ -458,6 +458,38 @@ the same function. That is why `@CurrentUser()` throws rather than returning
 undefined, and it is the kind of thing that only looks obvious once someone has
 pointed at both halves.
 
+### 1.6 — Frontend *(in progress — measurements kept here until close-out)*
+
+The full write-up comes at the 1.6 close-out. These are the numbers, recorded
+now so they survive. Setup: production build, InPrivate, cache disabled, CPU
+4x, Fast 4G, middle of three runs unless noted.
+
+**Dev server vs production (1.6f):** 40 requests / 7.0 MB / LCP ~9 s cold vs
+5 requests / ~155 kB / LCP ~1.7 s. Warm dev: ~3 s. LCP element: the "Logged in
+as" line, painted when `/auth/me` returns; table cells were each smaller, so
+`/tasks` did not affect LCP. CLS 0.00 without a skeleton. A 571 B request took
+274 ms, a 24 kB font 195 ms.
+
+**Fonts (1.6f):** system ~1.7 s, Inter `block` 2.00 s, Inter `swap` 1.44 s, all
+CLS 0 - within noise. Chose `swap`; `block` was only safe because the skeleton's
+sr-only text fetched weight 400 early.
+
+**After the top bar (1.6g):** board LCP ~1.2 s, steady. Table LCP 1.4-4.4 s,
+median ~2.7 s, with long tasks every run after `/tasks` lands (React mount of
+100 rows + Layout + Paint; console violations 148-766 ms). LCP element on the
+table is now a title cell. Lighthouse (board): Perf 60, LCP 3.5 s, TBT 1,690 ms,
+CLS 0, Accessibility 95.
+
+**Done checkbox (1.6g):** naive INP 56 ms but click-to-tick ~450 ms (PATCH then
+refetch). Optimistic: INP 16-24 ms (input delay 1, processing 5, presentation
+18), click-to-tick under 50 ms. Re-rendering 100 rows on update costs ~5 ms in
+production, so no `React.memo`; a 1.4 s dev-only long task (dev React + React
+DevTools) had suggested otherwise. `groupByStatus` 0.124 ms, so no `useMemo`.
+
+**Open from these:** table mount cost; the failing Lighthouse accessibility
+audit; `forbidNonWhitelisted` ADR (a `{ done }` PATCH returned 200 and changed
+nothing); pass the AbortSignal through `api.get`.
+
 
 ---
 

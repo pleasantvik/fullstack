@@ -1,10 +1,10 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.6a — Vite, Tailwind, and build-time config
+**Active increment:** 1.6g — board, toggle, task modal, optimistic updates (5b next)
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
-**Last updated:** 2026-10-06
+**Last updated:** 2026-10-17
 
 ## Start here next session
 
@@ -18,50 +18,42 @@ are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
 
     cd ~/task-manager
 
-**Branch BEFORE writing anything.** Three increments in a row have been built on
-the previous increment's branch, and once it happens a PR either carries the
-wrong name or merges into the wrong base. PR #10 merged into a feature branch
-and looked successful while the work went nowhere near `main`.
+**Branch AFTER the previous PR is merged, from `origin/main`.** Twice in 1.6 a
+branch was cut before its predecessor merged and had to be moved.
 
-    git checkout main && git pull
-    git checkout -b feat/<increment>
+    git fetch && git switch -c feat/<increment> origin/main
 
 Then:
 
     docker compose up -d
     pnpm --filter api start:dev
+    pnpm --filter web dev            # http://localhost:5173 only
 
-Then increment **1.6a — Vite, Tailwind, and build-time config**. Explained
-already; nothing written yet.
+**Restart Vite after any branch switch**, and **stop `vite preview` after
+measuring** - it holds port 5173 and serves an old build that looks almost
+right (it fooled us once). `strictPort` makes the dev server refuse the port
+rather than quietly moving to 5174.
 
-- Vite + React scaffold in `apps/web`, generated into `/tmp` and cherry-picked
-  rather than run in place - `apps/web/package.json` exists and a generator
-  would overwrite it, same as `nest new` would have in 1.3a
-- Tailwind with the tokens from `docs/design/ui-spec.md`
-- `VITE_API_URL`, and an `apps/web/.env.example` separate from the root one
+**Check first: is slice 4 committed?** At the end of 2026-10-17 three commits
+were still pending on `feat/1.6g-board` - the optimistic checkbox (slice 4),
+the New task modal (5a), and the docs. Commit messages were drafted in the
+session; if lost, rewrite from the milestone file's 1.6 measurements.
 
-*Concept focus:* build-time environment variables. `import.meta.env.VITE_*` is
-replaced with a string literal during the build - it is not read at runtime and
-is not present at runtime. Two consequences: anything prefixed `VITE_` is
-public, in plain text, in a file served to the world; and one web image cannot
-be promoted between environments the way the API image can. That second one is a
-real decision waiting in 1.7.
+Then **1.6g 5b — edit and delete a task**, explained but not yet written:
+- task title (table) and card (board) become `<button>`s opening `?task=<id>`
+- detail query `GET /tasks/:id`, seeded from the list cache with `initialData`
+- PATCH only `dirtyFields` (lost updates); clearing a field sends `null` -
+  check the API accepts it
+- delete with a two-step button, not `window.confirm()`; then remove the
+  detail query, invalidate the list, close
+- 404 on `?task=<id>` shows a clear message
 
-**One decision still open:** Tailwind is now 4.3.3 and configures in CSS via a
-`@theme` block, but `ui-spec.md` says the dark ramp lives in
-`tailwind.config.js`. Either adopt Tailwind 4 and amend that line, or pin
-Tailwind 3 to match the spec as written. Leaning towards the former - the spec
-says the design system is *established* in Milestone 1, so this is when that
-detail gets pinned down.
+Then the **1.6 close-out**: milestone note (measurements already in the
+milestone file), post in `docs/posts/`, `system-overview.md`, this file, one PR
+for 1.6g. Plus an ADR on `forbidNonWhitelisted`.
 
-Then **1.6b** login and register, **1.6c** TanStack Query and the table view,
-**1.6d** the board, toggle and task modal. Your spec says build the table before
-the board.
-
-**ADR 0006 gets revisited in 1.6b.** Refresh tokens come back in the response
-body today; an `httpOnly` cookie is the better answer, and its configuration
-depends on whether Nginx serves the web app and the API from the same origin -
-which 1.9 decides.
+Frontend explanations are technical only (no analogies) unless asked. Every
+concept goes into `docs/interview-notes.md` at the end of its slice.
 
 Build only the screens `docs/design/ui-spec.md` assigns to Milestone 1.
 
