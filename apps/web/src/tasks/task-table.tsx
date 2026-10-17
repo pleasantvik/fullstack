@@ -1,3 +1,4 @@
+import { Toast } from "../components/toast";
 import { describeError } from "../lib/describe-error";
 import { dueFormat, PRIORITY_LABEL, STATUS_LABEL } from "./task-format";
 import { useSetTaskDone } from "./use-set-task-done";
@@ -13,7 +14,7 @@ const createdFormat = new Intl.DateTimeFormat(undefined, {
 
 export function TaskTable() {
   const tasks = useTasks();
-  const { setDone } = useSetTaskDone();
+  const { setDone, error: saveError, dismissError } = useSetTaskDone();
 
   // Plain text, no skeleton: the table appearing in its place is new content,
   // not moved content, so it costs no CLS (measured at 0.00 in 1.6f).
@@ -43,53 +44,59 @@ export function TaskTable() {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      {/* table-fixed sizes columns from the colgroup alone, without reading any
-          cell - long titles truncate instead of pushing the columns around. */}
-      <table className="w-full table-fixed text-sm">
-        <colgroup>
-          <col className="w-11" />
-          <col />
-          <col className="w-[132px]" />
-          <col className="w-[110px]" />
-          <col className="w-[132px]" />
-          <col className="w-[110px]" />
-        </colgroup>
-        <thead className="bg-surface-muted text-left text-label text-text-muted">
-          <tr className="h-11">
-            <th scope="col" className="pl-4">
-              <span className="sr-only">Done</span>
-            </th>
-            <th scope="col" className="px-4 font-medium">
-              Task
-            </th>
-            <th scope="col" className="px-4 font-medium">
-              Status
-            </th>
-            <th scope="col" className="px-4 font-medium">
-              Priority
-            </th>
-            <th scope="col" className="px-4 font-medium">
-              Due
-            </th>
-            <th scope="col" className="px-4 font-medium">
-              Created
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((task) => (
-            <TaskRow key={task.id} task={task} onSetDone={setDone} />
-          ))}
-        </tbody>
-      </table>
-
-      {total > items.length && (
-        <p className="border-t border-border px-4 py-2 text-label text-text-muted">
-          Showing {items.length} of {total} tasks.
-        </p>
-      )}
-    </div>
+    <>
+      <Toast
+        message={saveError && `Couldn't save that change, so it was undone. ${saveError}`}
+        onDismiss={dismissError}
+      />
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        {/* table-fixed sizes columns from the colgroup alone, without reading any
+            cell - long titles truncate instead of pushing the columns around. */}
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-11" />
+            <col />
+            <col className="w-[132px]" />
+            <col className="w-[110px]" />
+            <col className="w-[132px]" />
+            <col className="w-[110px]" />
+          </colgroup>
+          <thead className="bg-surface-muted text-left text-label text-text-muted">
+            <tr className="h-11">
+              <th scope="col" className="pl-4">
+                <span className="sr-only">Done</span>
+              </th>
+              <th scope="col" className="px-4 font-medium">
+                Task
+              </th>
+              <th scope="col" className="px-4 font-medium">
+                Status
+              </th>
+              <th scope="col" className="px-4 font-medium">
+                Priority
+              </th>
+              <th scope="col" className="px-4 font-medium">
+                Due
+              </th>
+              <th scope="col" className="px-4 font-medium">
+                Created
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((task) => (
+              <TaskRow key={task.id} task={task} onSetDone={setDone} />
+            ))}
+          </tbody>
+        </table>
+  
+        {total > items.length && (
+          <p className="border-t border-border px-4 py-2 text-label text-text-muted">
+            Showing {items.length} of {total} tasks.
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -103,8 +110,8 @@ function TaskRow({
   return (
     <tr className="h-11 border-t border-border">
       <td className="pl-4">
-        {/* Controlled by server data. NAIVE (1.6g slice 3): a click changes
-            nothing on screen until the PATCH and the refetch have both landed. */}
+        {/* Controlled by the cache, which useSetTaskDone writes before the
+            PATCH answers - never by the checkbox's own state. */}
         <input
           type="checkbox"
           checked={task.status === "DONE"}
