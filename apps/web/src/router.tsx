@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { RequireAuth } from "./auth/require-auth";
-import { BoardPage } from "./routes/board";
+import { TasksPage } from "./routes/tasks";
 import { LoginPage } from "./routes/login";
 import { RegisterPage } from "./routes/register";
 
@@ -14,7 +14,7 @@ export const router = createBrowserRouter([
     // A pathless layout route. Anything nested here is protected without being
     // named - the frontend counterpart of the global guard from 1.4c.
     element: <RequireAuth />,
-    children: [{ path: "/", element: <BoardPage /> }],
+    children: [{ path: "/", element: <TasksPage /> }],
   },
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
