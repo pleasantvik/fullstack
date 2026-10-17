@@ -1,7 +1,11 @@
 import { useLogout } from "../auth/use-logout";
 import { useMe } from "../auth/use-me";
+import { Modal } from "../components/modal";
 import { TaskBoard } from "../tasks/task-board";
+import { TaskForm } from "../tasks/task-form";
 import { TaskTable } from "../tasks/task-table";
+import { useCreateTask } from "../tasks/use-create-task";
+import { useTaskModal } from "../tasks/use-task-modal";
 import { type TaskView, useTaskView } from "../tasks/use-task-view";
 
 // Same geometry as BoardSkeleton in require-auth.tsx - a 56px bar, then p-6 - so
@@ -11,6 +15,7 @@ export function TasksPage() {
   const { data: user } = useMe();
   const { logout, isPending, error } = useLogout();
   const { view, setView } = useTaskView();
+  const { task, openNew, close } = useTaskModal();
 
   return (
     <div className="min-h-screen">
@@ -19,6 +24,13 @@ export function TasksPage() {
         <ViewToggle view={view} onChange={setView} />
 
         <div className="ml-auto flex items-center gap-3 text-sm">
+          <button
+            type="button"
+            onClick={openNew}
+            className="rounded-lg bg-accent px-3 py-1.5 font-medium text-white"
+          >
+            New task
+          </button>
           {/* The guard guarantees a user; TypeScript can't know that. */}
           <span className="text-text-muted">{user?.name ?? user?.email}</span>
           <button
@@ -41,8 +53,19 @@ export function TasksPage() {
       <main className="p-6">
         {view === "table" ? <TaskTable /> : <TaskBoard />}
       </main>
+
+      <Modal open={task === "new"} onClose={close} title="New task">
+        <CreateTask onDone={close} />
+      </Modal>
     </div>
   );
+}
+
+// Its own component so useCreateTask lives inside the modal's children: it
+// unmounts on close, and the next open starts with an empty form.
+function CreateTask({ onDone }: { onDone: () => void }) {
+  const create = useCreateTask({ onCreated: onDone });
+  return <TaskForm {...create} submitLabel="Create task" onCancel={onDone} />;
 }
 
 const VIEWS: { value: TaskView; label: string }[] = [
