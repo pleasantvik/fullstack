@@ -1,5 +1,6 @@
 import { useLogout } from "../auth/use-logout";
 import { useMe } from "../auth/use-me";
+import { TaskBoard } from "../tasks/task-board";
 import { TaskTable } from "../tasks/task-table";
 import { type TaskView, useTaskView } from "../tasks/use-task-view";
 
@@ -38,11 +39,7 @@ export function TasksPage() {
       )}
 
       <main className="p-6">
-        {view === "table" ? (
-          <TaskTable />
-        ) : (
-          <p className="text-sm text-text-muted">Board view - next slice.</p>
-        )}
+        {view === "table" ? <TaskTable /> : <TaskBoard />}
       </main>
     </div>
   );

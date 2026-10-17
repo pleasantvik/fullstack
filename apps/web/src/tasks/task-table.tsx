@@ -1,29 +1,10 @@
 import { describeError } from "../lib/describe-error";
-import { type Task, type TaskPriority, type TaskStatus, useTasks } from "./use-tasks";
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  TODO: "To do",
-  IN_PROGRESS: "In progress",
-  DONE: "Done",
-};
-
-const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  LOW: "Low",
-  MEDIUM: "Medium",
-  HIGH: "High",
-};
+import { dueFormat, PRIORITY_LABEL, STATUS_LABEL } from "./task-format";
+import { type Task, useTasks } from "./use-tasks";
 
 // Built once per module, not once per cell: constructing a formatter loads
-// locale data, and a 100-row table would do it 200 times every render.
-//
-// A due date is a calendar day, stored as midnight UTC. Formatted in local time
-// it shows the previous day anywhere west of Greenwich, so it is read in UTC.
+// locale data, and a 100-row table would do it 100 times every render.
 // createdAt is a real moment, so it is read in the viewer's own zone.
-const dueFormat = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
 const createdFormat = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "short",
@@ -32,7 +13,8 @@ const createdFormat = new Intl.DateTimeFormat(undefined, {
 export function TaskTable() {
   const tasks = useTasks();
 
-  // Deliberately naive: the baseline for the CLS measurement in slice 5.
+  // Plain text, no skeleton: the table appearing in its place is new content,
+  // not moved content, so it costs no CLS (measured at 0.00 in 1.6f).
   if (tasks.isPending) {
     return <p className="text-sm text-text-muted">Loading tasks...</p>;
   }
@@ -72,11 +54,21 @@ export function TaskTable() {
         </colgroup>
         <thead className="bg-surface-muted text-left text-label text-text-muted">
           <tr className="h-11">
-            <th scope="col" className="px-4 font-medium">Task</th>
-            <th scope="col" className="px-4 font-medium">Status</th>
-            <th scope="col" className="px-4 font-medium">Priority</th>
-            <th scope="col" className="px-4 font-medium">Due</th>
-            <th scope="col" className="px-4 font-medium">Created</th>
+            <th scope="col" className="px-4 font-medium">
+              Task
+            </th>
+            <th scope="col" className="px-4 font-medium">
+              Status
+            </th>
+            <th scope="col" className="px-4 font-medium">
+              Priority
+            </th>
+            <th scope="col" className="px-4 font-medium">
+              Due
+            </th>
+            <th scope="col" className="px-4 font-medium">
+              Created
+            </th>
           </tr>
         </thead>
         <tbody>
