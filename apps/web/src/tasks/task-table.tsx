@@ -1,5 +1,6 @@
 import { describeError } from "../lib/describe-error";
 import { dueFormat, PRIORITY_LABEL, STATUS_LABEL } from "./task-format";
+import { useSetTaskDone } from "./use-set-task-done";
 import { type Task, useTasks } from "./use-tasks";
 
 // Built once per module, not once per cell: constructing a formatter loads
@@ -12,6 +13,7 @@ const createdFormat = new Intl.DateTimeFormat(undefined, {
 
 export function TaskTable() {
   const tasks = useTasks();
+  const { setDone } = useSetTaskDone();
 
   // Plain text, no skeleton: the table appearing in its place is new content,
   // not moved content, so it costs no CLS (measured at 0.00 in 1.6f).
@@ -46,6 +48,7 @@ export function TaskTable() {
           cell - long titles truncate instead of pushing the columns around. */}
       <table className="w-full table-fixed text-sm">
         <colgroup>
+          <col className="w-11" />
           <col />
           <col className="w-[132px]" />
           <col className="w-[110px]" />
@@ -54,6 +57,9 @@ export function TaskTable() {
         </colgroup>
         <thead className="bg-surface-muted text-left text-label text-text-muted">
           <tr className="h-11">
+            <th scope="col" className="pl-4">
+              <span className="sr-only">Done</span>
+            </th>
             <th scope="col" className="px-4 font-medium">
               Task
             </th>
@@ -73,7 +79,7 @@ export function TaskTable() {
         </thead>
         <tbody>
           {items.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <TaskRow key={task.id} task={task} onSetDone={setDone} />
           ))}
         </tbody>
       </table>
@@ -87,9 +93,26 @@ export function TaskTable() {
   );
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({
+  task,
+  onSetDone,
+}: {
+  task: Task;
+  onSetDone: (id: string, done: boolean) => void;
+}) {
   return (
     <tr className="h-11 border-t border-border">
+      <td className="pl-4">
+        {/* Controlled by server data. NAIVE (1.6g slice 3): a click changes
+            nothing on screen until the PATCH and the refetch have both landed. */}
+        <input
+          type="checkbox"
+          checked={task.status === "DONE"}
+          onChange={(e) => onSetDone(task.id, e.target.checked)}
+          aria-label={`Done: ${task.title}`}
+          className="size-4 accent-accent"
+        />
+      </td>
       <td className="truncate px-4" title={task.title}>
         {task.title}
       </td>
