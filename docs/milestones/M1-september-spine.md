@@ -458,38 +458,104 @@ the same function. That is why `@CurrentUser()` throws rather than returning
 undefined, and it is the kind of thing that only looks obvious once someone has
 pointed at both halves.
 
-### 1.6 — Frontend *(in progress — measurements kept here until close-out)*
+### 1.6 — Frontend *(2026-10-18)*
 
-The full write-up comes at the 1.6 close-out. These are the numbers, recorded
-now so they survive. Setup: production build, InPrivate, cache disabled, CPU
-4x, Fast 4G, middle of three runs unless noted.
+Seven slices: 1.6a Vite, Tailwind and build-time config; 1.6b CORS; 1.6c auth
+tokens in httpOnly cookies; 1.6d the API client; 1.6e login, register and
+logout; 1.6f the table view, measured; 1.6g the board, toggle, optimistic
+checkbox and task modal.
 
-**Dev server vs production (1.6f):** 40 requests / 7.0 MB / LCP ~9 s cold vs
-5 requests / ~155 kB / LCP ~1.7 s. Warm dev: ~3 s. LCP element: the "Logged in
-as" line, painted when `/auth/me` returns; table cells were each smaller, so
-`/tasks` did not affect LCP. CLS 0.00 without a skeleton. A 571 B request took
-274 ms, a 24 kB font 195 ms.
+**What I built:** the web app, end to end against the local API. Register, log
+in, log out; tasks as a table or a board; tick a task done; create, edit and
+delete in a modal. Everything below was measured on a production build
+(InPrivate, cache off, CPU 4x, Fast 4G, middle of three runs) - goal 3 of the
+project is frontend performance learned by measuring, not by description.
 
-**Fonts (1.6f):** system ~1.7 s, Inter `block` 2.00 s, Inter `swap` 1.44 s, all
-CLS 0 - within noise. Chose `swap`; `block` was only safe because the skeleton's
-sr-only text fetched weight 400 early.
+*Auth moved into httpOnly cookies* (ADR 0008): access and refresh tokens both,
+`SameSite=Strict`, refresh scoped to `/auth`, 204s with no body. CSRF is covered
+by SameSite, JSON-only bodies and the CORS preflight. CORS trusts exactly one
+validated origin, `WEB_ORIGIN`.
 
-**After the top bar (1.6g):** board LCP ~1.2 s, steady. Table LCP 1.4-4.4 s,
-median ~2.7 s, with long tasks every run after `/tasks` lands (React mount of
-100 rows + Layout + Paint; console violations 148-766 ms). LCP element on the
-table is now a title cell. Lighthouse (board): Perf 60, LCP 3.5 s, TBT 1,690 ms,
-CLS 0, Accessibility 95.
+*One API client* (`lib/api.ts`): credentials on every request, one error type,
+and a **single-flight refresh** - concurrent 401s share one refresh, because the
+1.4 reuse detection revokes every session when a rotated token is presented
+twice. A backend security feature created a frontend correctness requirement.
 
-**Done checkbox (1.6g):** naive INP 56 ms but click-to-tick ~450 ms (PATCH then
-refetch). Optimistic: INP 16-24 ms (input delay 1, processing 5, presentation
-18), click-to-tick under 50 ms. Re-rendering 100 rows on update costs ~5 ms in
-production, so no `React.memo`; a 1.4 s dev-only long task (dev React + React
-DevTools) had suggested otherwise. `groupByStatus` 0.124 ms, so no `useMemo`.
+*Server state in TanStack Query*, client state in the URL. `?view=table` uses
+`replace` (switching views is not navigation); `?task=new|<id>` pushes, so Back
+closes the modal. Query keys are a factory (`taskKeys.all / lists / list /
+detail`); each mutation picks its level.
 
-**Open from these:** table mount cost; the failing Lighthouse accessibility
-audit; `forbidNonWhitelisted` ADR (a `{ done }` PATCH returned 200 and changed
-nothing); pass the AbortSignal through `api.get`.
+*The done checkbox* is optimistic: written into the cache before the PATCH,
+with `cancelQueries` first, a rollback of only that task's status on failure,
+and an invalidate when settled. Failures surface in a fixed toast with an
+always-present live region.
 
+*Create and edit* are not optimistic (a new task has no id; the user is in a
+form). Edit sends only changed fields, compared against starting values frozen
+at mount; cleared fields are sent as `null`. Delete is two-step with focus on
+Cancel; a 404 on delete counts as success. The modal is a native `<dialog>`
+opened with `showModal()`.
+
+*Measurements that changed decisions:*
+
+| What | Result | Decision |
+|---|---|---|
+| Dev server vs production | 40 req / 7.0 MB / LCP ~9 s vs 5 req / ~155 kB / ~1.7 s | never profile dev |
+| LCP element | the "Logged in as" line, not the table | `/tasks` did not affect LCP |
+| CLS with plain loading text | 0.00 - content appearing is not a shift | skeleton experiment dropped |
+| Fonts: system / Inter block / Inter swap | ~1.7 / 2.00 / 1.44 s, CLS 0 | Inter, `swap` |
+| Round trip vs bytes | 571 B took 274 ms, 24 kB took 195 ms | round trips are the cost |
+| `groupByStatus`, 100 tasks | 0.124 ms | no `useMemo` |
+| Naive checkbox | INP 56 ms, click-to-tick ~450 ms | INP is not "time to result" |
+| Optimistic checkbox | INP 16-24 ms, click-to-tick < 50 ms | done |
+| Re-render 100 rows on tick | ~5 ms in production (1.4 s in dev) | no `React.memo` |
+| Table LCP after the top bar | median ~2.7 s, long tasks on mount | open: mount cost |
+
+**What broke, and why:**
+
+1. *Silent failures, twice, both from writing the API contract from memory.*
+   The first `useTasks` typed statuses as `"pending" | "completed"` and
+   swallowed every error, so a 401 or a dead API looked like an empty list.
+   The first checkbox sent `{ done: true }`; the API has `status`, and
+   `whitelist: true` stripped the unknown field, so the PATCH returned **200
+   with nothing changed**. Reproduced on purpose to see it. Rule: read the DTO
+   or `/docs` before writing a request. `forbidNonWhitelisted` (ADR 0009) would
+   make the API say so.
+2. *A rewrite instead of a move.* Extracting the due-date formatter by retyping
+   it dropped `timeZone: "UTC"` - every due date a day early west of Greenwich,
+   invisible from Lagos. Moving code means moving its comments.
+3. *Measuring the wrong thing.* The dev server (three times), extensions in a
+   normal window, warm versus cold cache, an expired token adding a refresh to a
+   run, and a `vite preview` left holding port 5173 and serving an old build.
+   Each produced a number that looked like a finding.
+4. *My predictions were wrong as often as right* - the LCP element, when the
+   font would load, whether optimistic updates would move INP. The traces
+   corrected them; the habit worth keeping is predicting first anyway.
+5. *An error the user could not see.* The rollback message rendered above a
+   100-row table; anyone who clicked row 60 saw a tick vanish with no reason.
+   Hence the toast.
+6. *Process:* branches cut before the previous PR merged (twice more), and fresh
+   package versions let past pnpm's release-age guard with exclusions - undone
+   by moving to the previous releases with the guard fully on.
+
+Caught before shipping: react-hook-form's `dirtyFields` only tracks when read
+during render (an unsubscribed read would have made every edit send nothing),
+and starting values that followed a background refetch would have reintroduced
+the lost update the partial PATCH exists to prevent.
+
+**What I'd do differently:** Agree the frontend conventions before the first
+screen, not during review. I asked for logic and presentation to be separated
+at 1.6e - hooks for logic, pages for markup - but small components and rules
+kept landing in their parent's file (`TaskCard` inside `task-board.tsx`, the
+overdue rule inside a component) and needed a refactor before the PR. A
+convention stated once, written down, and applied from the first file is
+cheaper than one enforced file by file.
+
+**Open:** the table's mount cost (100 rows + layout, 300-700 ms at 4x); the
+failing Lighthouse accessibility audit (95); passing the `AbortSignal` through
+`api.get`; cross-tab refresh races; server-side versioning for concurrent edits
+(Milestone 3); route-level code splitting.
 
 ---
 
