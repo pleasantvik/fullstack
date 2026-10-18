@@ -19,3 +19,11 @@ export const dueFormat = new Intl.DateTimeFormat(undefined, {
   month: "short",
   timeZone: "UTC",
 });
+
+// Built once per module, not once per cell: constructing a formatter loads
+// locale data, and a 100-row table would do it 100 times every render.
+// createdAt is a real moment, so it is read in the viewer's own zone.
+export const createdFormat = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+});
