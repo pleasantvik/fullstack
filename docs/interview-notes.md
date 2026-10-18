@@ -1047,3 +1047,101 @@ function localToday() {
 }
 const overdue = task.status !== "DONE" && task.dueDate !== null && task.dueDate.slice(0, 10) < localToday();
 ```
+
+---
+
+## 10. Containers (Docker)
+
+### What is the difference between an image and a container?
+
+An **image** is a read-only stack of filesystem **layers** plus metadata (start
+command, environment, working directory). A **container** is a running instance
+of it: the image's layers plus a thin writable layer on top. Anything written in
+a container disappears when it is removed - persistent data belongs in a volume.
+
+### What creates a layer?
+
+Instructions that change files - `COPY`, `ADD`, `RUN` - each create one.
+`ENV`, `EXPOSE`, `CMD`, `USER` only record metadata. **A layer can never be
+changed afterwards, only covered by a later one.**
+
+### Can you remove a secret from an image by deleting it in a later step?
+
+No. `COPY . .` followed by `RUN rm .env` leaves the secret in the `COPY` layer;
+the `rm` only adds a layer that hides it. `docker save` + `tar` extracts it.
+Keep secrets out of the build context entirely.
+
+**In my project:** `.dockerignore` excludes every `.env` at any depth; checked
+inside the built image that only `.env.example` is present.
+
+```dockerfile
+# ✗ the secret is still in the COPY layer
+COPY . .
+RUN rm .env
+```
+```gitignore
+# .dockerignore - anchored at the context root, unlike .gitignore
+**/.env
+**/.env.*
+!**/.env.example
+```
+
+### What is the build context, and why does `.dockerignore` matter?
+
+The directory given to `docker build` (the final `.`), uploaded to the daemon
+before any instruction runs. `.dockerignore` controls three things: **security**
+(what can be copied in), **speed** (what is uploaded), and **cache** (what can
+invalidate a `COPY` layer - `.git` changes on every commit).
+
+Trap: `.dockerignore` patterns are anchored at the context root - `.env`
+matches only `./.env`. Use `**/`.
+
+**In my project:** a pnpm monorepo, so the context is the repo root (it needs
+the root lockfile). With `.dockerignore`, the upload was 704 kB.
+
+### Why `node:22-bookworm-slim` and not alpine?
+
+Alpine uses **musl** instead of glibc. Native modules (argon2, Prisma tooling)
+ship prebuilt binaries for glibc; on musl they need compiling or different
+binaries - a class of "works locally, crashes in the container" bugs. Slim
+Debian is larger but compatible. Pin at least the major version, never
+`latest`.
+
+### Exec form or shell form for CMD?
+
+**Exec form** (`CMD ["node", "dist/main.js"]`): the process is PID 1 and receives
+SIGTERM from `docker stop`, so it can shut down gracefully. **Shell form**
+(`CMD node dist/main.js`) runs it under `/bin/sh -c`, which does not forward
+signals: Docker waits 10 s, then SIGKILLs it - open connections are cut.
+
+```dockerfile
+CMD ["node", "dist/main.js"]   # ✓ node is PID 1, gets SIGTERM
+CMD node dist/main.js          # ✗ /bin/sh is PID 1, SIGTERM never reaches node
+```
+
+### Does `EXPOSE` publish a port?
+
+No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.
+
+### Why can't a container reach a database on `localhost`?
+
+A container's `localhost` is the container itself. Reach the host with host
+networking, or - properly - put both in one Docker network and use the service
+name (`postgres:5432` in Compose).
+
+### How do you pass a value to one build step without baking it in?
+
+Set it inline on that `RUN`. `ENV` would persist it in the image's metadata and
+every container's environment.
+
+```dockerfile
+# prisma generate needs DATABASE_URL to load its config, never to connect
+RUN DATABASE_URL="postgresql://placeholder@localhost/placeholder" \
+    pnpm --filter api exec prisma generate
+```
+
+**In my project - the naive baseline (1.7a):** one stage, `COPY . .`, every
+workspace dependency installed: **1.58 GB, 2 min 19 s** cold build, of which
+77 s was just writing the layers to disk and 27.5 s was `pnpm install` (which
+`COPY . .` re-runs after any change). The web app's files and `node_modules`
+were inside an API image.

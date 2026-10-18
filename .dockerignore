@@ -1,0 +1,24 @@
+# Never sent to a Docker build. The build context is the repo root - a pnpm
+# workspace needs the root lockfile - so this file lives here.
+#
+# Unlike .gitignore, patterns are anchored at the context root: ".env" matches
+# only ./.env, not apps/web/.env. Hence the **/ prefixes.
+
+# Secrets. COPY . . would bake these into a layer, readable by anyone who can
+# pull the image - even if a later instruction deletes the file.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Installed or generated inside the image; the VM's copies would be wrong there
+# and add hundreds of MB to every build's upload.
+**/node_modules
+**/dist
+apps/api/src/generated
+
+# Not needed to build or run anything, and every change to them would
+# otherwise invalidate the build cache.
+.git
+docs
+infra/vagrant
+**/.vscode
