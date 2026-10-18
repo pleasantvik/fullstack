@@ -13,6 +13,15 @@
 # (DNS resolution, allocator). Larger, but fewer surprises.
 FROM node:22-bookworm-slim AS build
 
+# Prisma picks its migration engine binary at install time by detecting OpenSSL,
+# and slim has none - it guessed "openssl-1.1.x" with a "may not work" warning.
+# Before the install, so the right engine is chosen. Build stage only (migrate
+# inherits it): the runtime talks to Postgres through the pg driver adapter and
+# needs no engine. Same RUN as the cleanup, or the apt lists stay in a layer.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /repo
 
 # pnpm comes from Corepack, at exactly the version (and hash) pinned in the root
@@ -41,6 +50,19 @@ RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholde
 
 # Compiles src/ - including the generated Prisma client - into dist/.
 RUN pnpm --filter api build
+
+# -------------------------------------------------------------- migrate ---
+# A one-off job, not a server: applies pending migrations and exits. Built from
+# the build stage, which already has the Prisma CLI (a devDependency), the
+# schema, the migrations folder and prisma.config.ts. Compose builds it with
+# target: migrate; it never runs as the API.
+FROM build AS migrate
+
+WORKDIR /repo/apps/api
+
+# deploy, never dev: dev can reset the database. Exec form, so a stop signal
+# reaches pnpm and Prisma directly.
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
 
 # -------------------------------------------------------------- runtime ---
 # Starts again from the clean base. Only what is copied or installed below is

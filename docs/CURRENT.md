@@ -25,9 +25,13 @@ branch was cut before its predecessor merged and had to be moved.
 
 Then:
 
-    docker compose up -d
+    docker compose up -d postgres    # only the database - see below
     pnpm --filter api start:dev
     pnpm --filter web dev            # http://localhost:5173 only
+
+`docker compose up -d` (no service name) now starts the containerised API too,
+on port 3000 - the same port `start:dev` wants. Use it to run the API as it
+will run in production; use `up -d postgres` when coding on the API.
 
 **Restart Vite after any branch switch**, and **stop `vite preview` after
 measuring** - it holds port 5173 and serves an old build that looks almost

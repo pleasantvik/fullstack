@@ -1283,6 +1283,82 @@ No. `docker-entrypoint.sh` ends with `exec "$@"`, which replaces the shell with
 `node`, so node is still PID 1 and receives SIGTERM. A wrapper script *without*
 `exec` would break it.
 
+### How do you order container start-up in Compose, and why do conditions matter?
+
+`depends_on` without a condition waits only for the container to be *created*.
+Conditions say what "ready" means: `service_healthy` waits for the healthcheck,
+`service_completed_successfully` waits for a container to **exit 0**,
+`service_started` is the weak default.
+
+**In my project (1.7e):** Postgres (`service_healthy` via `pg_isready`) →
+`migrate` (a one-off job, `restart: "no"`) → `api`, which starts only if the
+migration exited 0 - new code never runs against an old schema.
+
+```yaml
+api:
+  depends_on:
+    postgres:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+```
+
+### Where should database migrations run in a containerised app?
+
+As their own step, before the app starts - not inside the app's start command.
+`migrate && node main.js` makes every instance migrate at boot (several replicas
+race, even if a lock makes it safe), mixes a one-off job with a server, and a
+shell wrapper breaks signal handling. Run `migrate deploy` (applies committed
+migrations only), never a dev command that can reset the database.
+
+**In my project:** a `migrate` **build target** (`FROM build AS migrate`) that
+reuses the build stage's Prisma CLI, schema and migrations; Compose runs it
+before the API, and the deploy script (1.10) will run
+`docker compose run --rm migrate` before restarting the API. The runtime image
+no longer needs the CLI.
+
+```dockerfile
+FROM build AS migrate
+WORKDIR /repo/apps/api
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
+
+FROM node:22-bookworm-slim AS runtime   # still the last stage = the default build
+```
+
+### Which stages does `docker build` build in a multi-stage Dockerfile?
+
+With BuildKit, only the stages the **target** depends on (the last stage by
+default), in parallel where they are independent. A stage nothing refers to -
+like a `migrate` target - is skipped. The legacy builder built every stage up
+to the target. Consequence: a job stage must not be the *last* stage, or plain
+builds ship it as the app.
+
+### How do containers in Compose reach each other?
+
+Compose puts every service on a shared network with DNS: the **service name** is
+the hostname (`postgres:5432`). `localhost` inside a container is that
+container. `environment:` overrides `env_file:`, so one `.env` can keep a
+`localhost` URL for running on the host while Compose injects the container one.
+
+Trap: a connection URL built from a password breaks on `@ : / # %` - percent-
+encode them, or generate passwords from letters and digits.
+
+### Why read warnings from database tooling even when "it worked"?
+
+**In my project:** `migrate` printed "Prisma failed to detect the libssl/openssl
+version ... Defaulting to openssl-1.1.x". The slim image has no OpenSSL; Prisma
+picks its native migration engine at **install** time and guessed. "No pending
+migrations" barely exercises the engine - the first real schema change could be
+where it fails. Fixed by installing `openssl` in the build stage **before**
+`pnpm install`, in one `RUN` with the apt cleanup; the runtime stage (pg driver
+adapter, no engine) stays without it.
+
+```dockerfile
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*      # same RUN, or the lists stay in a layer
+```
+
 ### Does `EXPOSE` publish a port?
 
 No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.
