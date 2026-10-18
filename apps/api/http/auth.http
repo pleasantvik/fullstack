@@ -48,7 +48,8 @@ Content-Type: application/json
 }
 
 ###
-# A smuggled field -> 201, isAdmin silently stripped by whitelist: true.
+# A smuggled field -> 400 "property isAdmin should not exist" (ADR 0009).
+# Before forbidNonWhitelisted it was 201 with isAdmin silently stripped.
 POST {{host}}/auth/register
 Content-Type: application/json
 

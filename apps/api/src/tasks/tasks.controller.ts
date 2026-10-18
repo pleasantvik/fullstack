@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -55,12 +56,20 @@ export class TasksController {
   }
 
   @Patch(":id")
+  @ApiResponse({ status: 400, description: "Unknown field, invalid value, or nothing to update." })
   @ApiResponse({ status: 404, description: "No such task, or not yours." })
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateTaskDto,
   ) {
+    // Here, not in the service: whether a request is well-formed is the HTTP
+    // layer's question. Values, not keys - with target ES2023 every declared
+    // DTO field is an own property set to undefined, so Object.keys(dto) is
+    // never empty.
+    if (Object.values(dto).every((value) => value === undefined)) {
+      throw new BadRequestException("Send at least one field to update.");
+    }
     return this.tasks.update(user.id, id, dto);
   }
 
