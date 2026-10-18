@@ -79,6 +79,17 @@ apart, window at most 5 s); CLS is the worst window.
   `line-height` and the table is `table-fixed` with fixed row heights: a new
   font can change widths but never heights.
 
+```css
+/* Text can't change height when a font swaps, because the line box is fixed: */
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }  /* Tailwind's text-xl */
+```
+```html
+<!-- Columns sized from the colgroup, never from content: -->
+<table class="table-fixed">
+  <colgroup><col /><col class="w-[132px]" /><col class="w-[110px]" /></colgroup>
+</table>
+```
+
 ### What is INP, and why did it replace FID?
 
 Interaction to Next Paint (a Core Web Vital since March 2024): for each click,
@@ -175,6 +186,13 @@ suggested a problem that production did not have.
 - **Markers:** Nav, DCL, FCP, LCP. Hover LCP to highlight the element.
 - **Screenshots strip:** what the user actually saw, frame by frame.
 
+```js
+// Measuring a single function quickly, in the Console or temporarily in code:
+console.time("group");
+const groups = groupByStatus(tasks.data.items);
+console.timeEnd("group"); // group: 0.124 ms
+```
+
 ### Do bytes or round trips matter more?
 
 On mobile networks, usually round trips. **In this project:** a 571-byte
@@ -210,6 +228,13 @@ Loading a route's code only when the route is visited (`React.lazy`, dynamic
 `register.tsx` and react-hook-form (409 kB unminified) it never uses - a
 candidate, not yet done, because it was not the bottleneck measured.
 
+```tsx
+// Route-level splitting (not done in this project yet):
+const RegisterPage = lazy(() => import("./routes/register"));
+// <Suspense fallback={<Spinner />}><RegisterPage /></Suspense>
+// The register page's code (and react-hook-form) downloads only when visited.
+```
+
 ### How does `font-display` affect LCP and CLS?
 
 | Value | Block period | Swap period | Effect |
@@ -226,6 +251,16 @@ all within noise. `block` only came out even by accident: the hidden
 `sr-only` "Loading" text in the auth skeleton requested weight 400 early, and
 the LCP element used 400. **Chose `swap`**, because it does not depend on that
 accident.
+
+```css
+@font-face {
+  font-family: "Inter";
+  font-weight: 400;
+  font-display: swap; /* text is never hidden while the font loads */
+  src: url("./assets/fonts/inter-latin-400.woff2") format("woff2"); /* in src/: hashed by Vite */
+}
+@theme { --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif; } /* fallbacks */
+```
 
 ### Why self-host fonts instead of Google Fonts?
 
@@ -258,6 +293,14 @@ key decides only which instance (and its state) is reused.
 index 0 - the worst case for index keys. Rows and board cards use `task.id`;
 a task that changes status moves between board columns as itself.
 
+```tsx
+// ✗ state (a ticked box, focus) stays with the position, not the task
+{items.map((task, i) => <TaskRow key={i} task={task} />)}
+
+// ✓ state follows the task, even when a new one is added at the top
+{items.map((task) => <TaskRow key={task.id} task={task} />)}
+```
+
 ### What is derived state, and why not copy server data into `useState`?
 
 Anything computable from existing data should be computed during render, not
@@ -270,6 +313,20 @@ A related trap: `useState(initial)` reads its initial value **once**, on mount.
 screen and address bar disagree.
 
 **In this project:** the board groups tasks by status on every render.
+
+```tsx
+// ✗ a copy: one render behind, and every writer must update both
+const [groups, setGroups] = useState({});
+useEffect(() => setGroups(groupByStatus(items)), [items]);
+
+// ✓ derived: computed from the single source on every render
+const groups = groupByStatus(items);
+
+// ✗ reads the URL once; a later ?view= change on the same route is ignored
+const [view, setView] = useState(params.get("view"));
+// ✓ read on every render
+const view = params.get("view") === "table" ? "table" : "board";
+```
 
 ### When should you use `useMemo` or `React.memo`?
 
@@ -286,6 +343,13 @@ code, comparisons on every render, dependency lists that can be wrong, and (for
 - The real cost in production is **mount** (creating 100 rows of DOM and laying
   them out, 300-700 ms at 4x CPU on first load), not **update**.
 
+```tsx
+// Only after measuring a real cost. React.memo also needs stable props:
+const TaskRow = memo(function TaskRow({ task, onSetDone }) { /* ... */ });
+const setDone = useCallback((id, done) => mutate({ id, done }), [mutate]);
+// Without useCallback, a new function every render defeats memo entirely.
+```
+
 ### Controlled vs uncontrolled inputs?
 
 Controlled: React state/props decide the value (`checked={...}`); a click asks,
@@ -293,6 +357,15 @@ the data answers. Uncontrolled: the DOM keeps its own value
 (`defaultChecked`). Swapping a slow controlled checkbox for `defaultChecked`
 *looks* instant, but the box then holds its own state - a failed save leaves it
 ticked and nothing ever corrects it.
+
+```tsx
+// ✓ controlled: the data decides; a failed save leaves it correct
+<input type="checkbox" checked={task.status === "DONE"} onChange={...} />
+
+// ✗ uncontrolled: looks instant, but holds its own state - a failed save
+//   leaves it ticked and nothing ever corrects it
+<input type="checkbox" defaultChecked={task.status === "DONE"} onChange={...} />
+```
 
 ### Why do effects run twice in development?
 
@@ -311,6 +384,11 @@ unmount, mount, fresh state. Needed because many things read their input
 task has loaded; a background refetch never overwrites what the user is typing
 because `defaultValues` are not re-read.
 
+```tsx
+// A different key = unmount + mount = fresh useForm({ defaultValues })
+<EditTaskForm key={task.id} task={task} onDone={close} />
+```
+
 ### Why `useState(() => compute())` instead of `const x = compute()`?
 
 The initialiser runs on the first render only; a plain expression runs on
@@ -319,6 +397,11 @@ with it. Recomputed each render, they would follow a background refetch, an
 untouched field would look edited, and the old value would be sent back over
 another tab's change.
 
+```tsx
+const initial = toFields(task);               // ✗ recomputed every render
+const [initial] = useState(() => toFields(task)); // ✓ frozen at mount
+```
+
 ### What is react-hook-form's Proxy subscription, and what is its trap?
 
 `formState` is a `Proxy`: a component re-renders only for the properties it
@@ -326,6 +409,16 @@ another tab's change.
 only inside an event handler (`dirtyFields`) may never be tracked and come back
 empty. **In this project:** "changed fields" is computed by comparing values
 with the frozen starting values instead.
+
+```tsx
+const form = useForm({ defaultValues });
+const { errors } = form.formState;  // read during render → subscribed
+
+onSubmit = form.handleSubmit((values) => {
+  form.formState.dirtyFields;      // ✗ read only here: may be empty
+  toPatch(values, initial);        // ✓ compare with frozen starting values
+});
+```
 
 ---
 
@@ -350,6 +443,18 @@ and any future filtered list.
 **In this project:** the API defaults to 20 items per page; a key without the
 limit (and a URL without `?limit=100`) would silently drop the 21st task.
 
+```ts
+// ✗ the limit isn't in the key; the API's default of 20 applies silently
+useQuery({ queryKey: ["tasks"], queryFn: () => api.get("/tasks") });
+
+// ✓ every input of the query function is in the key, and builds the URL
+const params = { limit: 100 };
+useQuery({
+  queryKey: ["tasks", "list", params],
+  queryFn: () => api.get(`/tasks?${new URLSearchParams({ limit: String(params.limit) })}`),
+});
+```
+
 ### `staleTime` vs `gcTime`?
 
 `staleTime`: how long data counts as fresh - fresh data is served from cache
@@ -357,11 +462,27 @@ with no request. `gcTime`: how long *unused* data stays in memory after the
 last component using it unmounts. Default `staleTime` is 0 (refetch on every
 mount); this project uses 30 s globally and 5 min for `/auth/me`.
 
+```ts
+new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000 } }, // fresh for 30 s: no request
+});                                                    // gcTime stays 5 min (default)
+```
+
 ### What should be retried?
 
 Only what might succeed next time: network failures, 408, 429, 5xx. Never other
 4xx - the same request gets the same answer. Never automatically retry
 non-idempotent mutations.
+
+```ts
+function isTransient(error: unknown) {
+  if (!(error instanceof ApiError)) return false; // our own bug: retrying won't help
+  const { status } = error;
+  return status === 0 || status === 408 || status === 429 || status >= 500;
+}
+// queries: { retry: (count, error) => isTransient(error) && count < 2 }
+// mutations: not retried (the default) - a repeated POST can create twice
+```
 
 ### Where should query errors be handled?
 
@@ -371,6 +492,21 @@ project:** a 401 that survived the refresh attempt sets the cached user to
 401 and returned `null` would have left a logged-out user staring at an empty
 table, with no redirect. The one exception, `/auth/me`, returns `null` on 401
 on purpose: for "who am I?", "nobody" is a valid answer.
+
+```ts
+new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) {
+        queryClient.setQueryData(ME_KEY, null); // the route guard redirects
+      }
+    },
+  }),
+});
+
+// ✗ in a hook: the 401 becomes "no data", onError never fires, no redirect
+queryFn: async () => { try { return await api.get("/tasks"); } catch { return null; } }
+```
 
 ### What does TanStack Query deduplicate?
 
@@ -408,6 +544,30 @@ Pitfalls:
 with DevTools request blocking (`*://localhost:3000/tasks/*`, which blocks the
 PATCH but not `/tasks?limit=100`).
 
+```ts
+useMutation({
+  mutationFn: ({ id, done }) =>
+    api.patch(`/tasks/${id}`, { status: done ? "DONE" : "TODO" }), // the value, not a toggle
+
+  onMutate: async ({ id, done }) => {
+    await queryClient.cancelQueries({ queryKey: taskKeys.all });     // stop stale refetches
+    const previousStatus = findStatus(id);                           // remember ONE task
+    writeStatus(id, done ? "DONE" : "TODO");                         // immutable write
+    return { id, previousStatus };                                   // → context
+  },
+  onError: (_err, _vars, context) => {
+    if (context?.previousStatus) writeStatus(context.id, context.previousStatus);
+  },
+  onSettled: () => queryClient.invalidateQueries({ queryKey: taskKeys.all }),
+});
+
+function writeStatus(id, status) {
+  queryClient.setQueriesData({ queryKey: taskKeys.lists() }, (list) =>
+    list && { ...list, items: list.items.map((t) => (t.id === id ? { ...t, status } : t)) },
+  );
+}
+```
+
 ### What is a single-flight refresh?
 
 When several requests get a 401 at once, only one refresh request is sent and
@@ -417,6 +577,21 @@ detection treats as theft - it revoked every session. Measured: three
 refreshes (one 204, two 401) without it; one with it. Not covered: two *tabs*
 refreshing at once (they share cookies, not the promise) - Web Locks or a
 server-side grace window would fix that.
+
+```ts
+let refreshing: Promise<boolean> | null = null;
+
+function refresh() {
+  // ??= : only the first caller starts a request; the rest await the same promise
+  refreshing ??= fetch(`${BASE}/auth/refresh`, { method: "POST", credentials: "include" })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+// Measured: with `=` instead of `??=`, three refreshes (one 204, two 401) and a
+// revoked session; with `??=`, one.
+```
 
 ### What is a query key factory, and when is it worth it?
 
@@ -436,6 +611,18 @@ a detail query arrived, because the checkbox's `setQueriesData(["tasks"])`
 updater expected a `TaskList` and would have thrown on a `Task`. Writes now
 target `lists()`; invalidation targets `all`.
 
+```ts
+export const taskKeys = {
+  all: ["tasks"] as const,
+  lists: () => [...taskKeys.all, "list"] as const,
+  list: (params: { limit: number }) => [...taskKeys.lists(), params] as const,
+  detail: (id: string) => [...taskKeys.all, "detail", id] as const,
+};
+
+queryClient.setQueriesData({ queryKey: taskKeys.lists() }, updater); // lists only
+queryClient.invalidateQueries({ queryKey: taskKeys.all });          // everything
+```
+
 ### How do you open a detail view instantly using data you already have?
 
 `initialData` seeds a new query from another cache entry (the list), so it
@@ -452,6 +639,15 @@ Trap: `initialData` runs once per cache entry. A detail cached from an earlier
 open is reused for `gcTime` (5 min) even if the list changed since - so
 mutations must invalidate details too.
 
+```ts
+useQuery({
+  queryKey: taskKeys.detail(id),
+  queryFn: () => api.get<Task>(`/tasks/${id}`),
+  initialData: () => findInLists(queryClient, id)?.task,              // no request
+  initialDataUpdatedAt: () => findInLists(queryClient, id)?.updatedAt, // real age
+});
+```
+
 ### `removeQueries` vs `invalidateQueries`?
 
 Invalidate marks stale and **refetches immediately if anything is observing**.
@@ -459,11 +655,27 @@ Remove deletes the entry. **In this project:** after deleting a task, the detail
 is *removed* - invalidating would refetch it while the modal still observed it,
 and the refetch would 404 on screen.
 
+```ts
+// after DELETE /tasks/:id → 204
+onDeleted();                                                          // close: unmount observer
+queryClient.removeQueries({ queryKey: taskKeys.detail(id), exact: true }); // not invalidate
+queryClient.setQueriesData({ queryKey: taskKeys.lists() }, (list) =>
+  list && { ...list, items: list.items.filter((t) => t.id !== id) });  // gone this frame
+await queryClient.invalidateQueries({ queryKey: taskKeys.lists() });  // server corrects counts
+```
+
 ### Why write a mutation's response into the cache?
 
 `setQueryData(detail(id), updated)` with the PATCH response makes the cache
 correct with zero extra requests; an invalidate would spend a GET learning what
 the response already said.
+
+```ts
+onSuccess: (updated) => {
+  queryClient.setQueryData(taskKeys.detail(updated.id), updated); // 0 requests
+  return queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
+},
+```
 
 ### What is a lost update, and how do you prevent it?
 
@@ -475,11 +687,38 @@ edited. Closing it needs **optimistic concurrency control** on the server: a
 now; versioning deferred to Milestone 3, when team sharing makes concurrent
 edits real.
 
+```ts
+// Client: send only what changed, compared with values frozen at mount
+function toPatch(values, initial) {
+  const patch = {};
+  if (values.title.trim() !== initial.title) patch.title = values.title.trim();
+  if (values.dueDate !== initial.dueDate) patch.dueDate = values.dueDate || null; // cleared → null
+  return patch;
+}
+```
+```http
+# Server-side fix (not built yet): optimistic concurrency with ETags
+GET /tasks/42          → 200, ETag: "v7"
+PATCH /tasks/42        If-Match: "v7"   → 200 (and the version becomes v8)
+PATCH /tasks/42        If-Match: "v7"   → 412 Precondition Failed (someone saved first)
+```
+
 ### Is DELETE idempotent? How should a client treat a 404 on delete?
 
 The *effect* of DELETE is idempotent (gone is gone); the *response* may differ
 (204, then 404). From the user's point of view a 404 means the goal is already
 met. **In this project:** a 404 on delete is treated as success.
+
+```ts
+mutationFn: async () => {
+  try {
+    await api.delete(`/tasks/${id}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return; // already gone = done
+    throw error;
+  }
+},
+```
 
 ---
 
@@ -506,6 +745,21 @@ Also: validate parameters (anything but `table` means board), keep defaults out
 of the URL (one address per screen), and **edit** the existing query string
 rather than replacing it, so other parameters survive.
 
+```ts
+const [params, setParams] = useSearchParams();
+
+// view toggle: replace, and edit the current params rather than replacing them
+setParams((current) => { current.set("view", "table"); return current; }, { replace: true });
+
+// open a modal: push (no replace option), so Back closes it
+setParams((current) => { current.set("task", "new"); return current; });
+
+// close it: replace - never navigate(-1), which can fire twice
+setParams((current) => { current.delete("task"); return current; }, { replace: true });
+
+// ✗ setParams({ view: "table" }) wipes every other parameter
+```
+
 ---
 
 ## 7. Security in the browser
@@ -517,6 +771,23 @@ browser extension cannot steal them. `localStorage` is readable by any script
 on the origin. **In this project:** access and refresh tokens are both httpOnly
 cookies, `SameSite=Strict`, `Secure`; the refresh cookie is scoped to
 `Path=/auth`. Login, refresh and logout return 204 with no body.
+
+```ts
+// NestJS (Express) - setting the cookie
+res.cookie("access_token", token, {
+  httpOnly: true,       // invisible to document.cookie, so XSS can't read it
+  secure: true,         // HTTPS only
+  sameSite: "strict",   // never sent on requests from another site
+  path: "/",
+  maxAge: 15 * 60 * 1000,
+});
+
+// Frontend - send it on every request
+fetch(url, { credentials: "include" });
+
+// ✗ readable by any script on the page, including injected ones and extensions
+localStorage.setItem("token", token);
+```
 
 ### Origin vs site? And what does SameSite do?
 
@@ -545,6 +816,17 @@ origin (`origin: true`) with credentials is a vulnerability; send
 `Vary: Origin` when the header depends on the request; response headers are
 hidden from JavaScript unless listed in `exposedHeaders`.
 
+```ts
+app.enableCors({
+  origin: config.get("WEB_ORIGIN"),   // one exact origin - never "*" or `true` with credentials
+  credentials: true,                  // allow cookies on cross-origin requests
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type"],
+  exposedHeaders: ["X-Request-Id"],   // otherwise JS can't read it
+  maxAge: 7200,                       // cache the preflight (Chromium caps at 2 h)
+});
+```
+
 ### What is IDOR, and where must ownership be enforced?
 
 Insecure Direct Object Reference: accessing someone else's record by changing an
@@ -554,12 +836,30 @@ task query filters on `userId` in the `where` clause, and another user's task
 returns **404, not 403**, so the API does not even confirm it exists. The UI
 shows the same message for 404 and 400 (not a UUID).
 
+```ts
+// ✗ fetches by id alone - hands any task to anyone who knows its id
+prisma.task.findUnique({ where: { id } });
+
+// ✓ ownership is part of the query: someone else's task is never selected → 404
+prisma.task.findFirst({ where: { id, userId } });
+prisma.task.updateMany({ where: { id, userId }, data });
+```
+
 ### What is an open redirect?
 
 A login page that redirects to a URL taken from the query string
 (`/login?next=https://evil.example`) lets anyone craft a genuine-looking link
 that ends somewhere hostile. **In this project:** the return location is kept
 in router history state, which cannot be set from outside the app.
+
+```tsx
+// ✗ attacker-controlled: /login?next=https://evil.example
+navigate(new URLSearchParams(location.search).get("next") ?? "/");
+
+// ✓ router state can only be set by the app itself
+<Navigate to="/login" replace state={{ from: location }} />
+const returnTo = location.state?.from?.pathname ?? "/";
+```
 
 ### Are build-time environment variables secret?
 
@@ -571,6 +871,14 @@ anyone can read them. One bundle per environment.
 Clear the whole query cache (another user on the same machine must not see the
 previous user's data), then set the current user to `null` - in that order,
 because `clear()` would undo the second step.
+
+```ts
+onSuccess: () => {
+  queryClient.clear();                  // the previous user's data, all of it
+  queryClient.setQueryData(ME_KEY, null); // after clear(), or clear() undoes it
+  navigate("/login", { replace: true });
+},
+```
 
 ### How do you defend against supply-chain attacks in npm dependencies?
 
@@ -584,6 +892,14 @@ because `clear()` would undo the second step.
 - **Strict isolation** prevents phantom dependencies (importing a package you
   never declared).
 
+```yaml
+# pnpm-workspace.yaml
+minimumReleaseAge: 1440        # minutes: refuse versions under a day old
+allowBuilds:                   # install scripts are denied unless listed
+  prisma: true
+  protobufjs: false            # decided, not left undecided
+```
+
 ### What is a silent failure, and how did one happen here?
 
 A request that "succeeds" without doing anything. **In this project:** the
@@ -592,6 +908,15 @@ first draft of the checkbox sent `{ done: true }`; the API has `status`, not
 fields, so the PATCH returned 200 with the task unchanged - no error anywhere.
 `forbidNonWhitelisted: true` would turn it into a 400. Lesson: read the DTO or
 OpenAPI docs before writing a request.
+
+```ts
+// NestJS global pipe
+new ValidationPipe({
+  whitelist: true,              // strips unknown fields: { done: true } → {} → 200, nothing changed
+  forbidNonWhitelisted: true,   // proposed (ADR 0009): unknown fields → 400 "property done should not exist"
+  transform: true,
+});
+```
 
 ---
 
@@ -629,6 +954,41 @@ OpenAPI docs before writing a request.
   rendering, network callbacks) until answered, counts against INP, cannot be
   styled, and can be silently suppressed by the browser.
 
+### Accessibility in code
+
+```tsx
+// Toggle buttons
+<div role="group" aria-label="View">
+  <button type="button" aria-pressed={view === "board"} onClick={...}>Board</button>
+  <button type="button" aria-pressed={view === "table"} onClick={...}>Table</button>
+</div>
+
+// ✗ not focusable, no Enter/Space, not announced as clickable
+<div onClick={() => open(task.id)}>{task.title}</div>
+// ✓ and only phrasing content inside a button
+<button type="button" onClick={() => open(task.id)}>
+  <span className="block">{task.title}</span>
+</button>
+
+// Distinct names for repeated controls
+<input type="checkbox" aria-label={`Done: ${task.title}`} />
+
+// A live region that exists before its content changes
+<div aria-live="assertive">{message && <p>{message}</p>}</div>
+
+// A modal: showModal(), not the open attribute
+useEffect(() => {
+  if (open && !dialog.open) dialog.showModal();   // top layer, inert page, Escape, focus
+  if (!open && dialog.open) dialog.close();
+}, [open]);
+<dialog ref={ref} onClose={onClose} aria-labelledby={titleId}>...</dialog>
+
+// Moving focus when the focused element is about to disappear
+<button type="button" autoFocus onClick={cancel}>Cancel</button>
+requestAnimationFrame(() => deleteButton.current?.focus());
+```
+
+
 ---
 
 ## 9. Dates and time zones
@@ -649,3 +1009,20 @@ Related:
 - `<input type="date">` gives `YYYY-MM-DD`; send it unchanged.
 - Build `Intl.DateTimeFormat` once per module, not per cell - constructing one
   loads locale data. Pass `undefined` as the locale to use the viewer's.
+
+```ts
+// A calendar day stored as midnight UTC: format it IN UTC
+const dueFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+dueFormat.format(new Date("2026-10-16T00:00:00Z")); // "Oct 16" everywhere
+// without timeZone: "Oct 15" in New York
+
+// A real moment: viewer's zone (the default)
+const createdFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+
+// "Overdue" as a string comparison against the viewer's local date
+function localToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+const overdue = task.status !== "DONE" && task.dueDate !== null && task.dueDate.slice(0, 10) < localToday();
+```
