@@ -1101,11 +1101,15 @@ the root lockfile). With `.dockerignore`, the upload was 704 kB.
 
 ### Why `node:22-bookworm-slim` and not alpine?
 
-Alpine uses **musl** instead of glibc. Native modules (argon2, Prisma tooling)
-ship prebuilt binaries for glibc; on musl they need compiling or different
-binaries - a class of "works locally, crashes in the container" bugs. Slim
-Debian is larger but compatible. Pin at least the major version, never
-`latest`.
+Alpine uses **musl** instead of glibc. Most native Node modules and their
+prebuilt binaries are built and tested against glibc first; on musl some need a
+separate build or compiling, and musl differs in small ways (DNS resolution,
+memory allocation performance). Slim Debian is larger but the safer default.
+Pin at least the major version, never `latest`.
+
+**In my project:** I first claimed argon2 would break on musl - wrong:
+`@node-rs/argon2` publishes a musl build too. Check the actual packages before
+citing them; the general glibc argument still holds.
 
 ### Exec form or shell form for CMD?
 
@@ -1117,6 +1121,242 @@ signals: Docker waits 10 s, then SIGKILLs it - open connections are cut.
 ```dockerfile
 CMD ["node", "dist/main.js"]   # ✓ node is PID 1, gets SIGTERM
 CMD node dist/main.js          # ✗ /bin/sh is PID 1, SIGTERM never reaches node
+```
+
+### How does Docker's build cache decide what to rebuild?
+
+A layer's cache key is its **parent layer** plus the instruction. For `COPY`/
+`ADD` the key includes a **checksum of the files copied**; for `RUN`, only the
+**command's text** (so `RUN apt-get update` stays cached however stale the
+package lists get). Once one layer misses, **every layer after it misses** - the
+cache is a chain.
+
+So order instructions from rarely changing to often changing: copy only the
+dependency manifests, install, **then** copy the source.
+
+Docker compares bytes, not meaning: one added space in `package.json` (no
+dependency changed) invalidates the install just the same.
+
+**In my project (1.7b):**
+
+| Change | `COPY . .` before install | Manifests → install → source |
+|---|---|---|
+| One comment in `main.ts` | 2 min 7 s | **20 s** (install `CACHED`, export 0.6 s) |
+| One space in `apps/api/package.json` | - | 2 min 17 s |
+
+In the second test, `COPY apps/web/package.json` re-ran although that file had
+not changed: its parent layer had.
+
+```dockerfile
+# ✗ any source change reinstalls every dependency
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+# ✓ the install depends only on the manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile
+COPY . .
+```
+
+Trap: `COPY . .` now lands on top of an installed `node_modules`; it survives
+only because `.dockerignore` excludes `**/node_modules`. The ignore file is now
+about correctness, not just security and speed.
+
+### What is a multi-stage build, and why is the build stage discarded?
+
+Several `FROM`s in one Dockerfile. Earlier stages install tools and compile;
+the **last** stage starts from a clean base and receives only what it needs via
+`COPY --from=<stage>`. Only the last stage becomes the image: compilers, CLIs,
+source and caches never ship. That cuts the size (every deploy downloads it) and
+the attack surface (tools an attacker could use, and CVEs a scanner reports).
+Earlier stages are not lost - their layers stay in the build cache on the
+machine that built them.
+
+Naive alternative: one stage and `rm -rf` at the end - the files stay in the
+earlier layers, so nothing shrinks.
+
+```dockerfile
+FROM node:22-bookworm-slim AS build
+RUN pnpm install --frozen-lockfile --filter api        # dev deps: compiler, CLIs
+COPY . .
+RUN pnpm --filter api build                            # → apps/api/dist
+
+FROM node:22-bookworm-slim AS runtime                  # clean start
+RUN pnpm install --frozen-lockfile --prod --filter api # production deps only
+COPY --from=build /repo/apps/api/dist apps/api/dist    # the only thing that crosses
+CMD ["node", "dist/main.js"]
+```
+
+### Does `--prod` guarantee a lean production install?
+
+No. `--prod` drops the project's own devDependencies, but a production
+dependency's **peer dependencies** come with it - including *optional* peers the
+lockfile has linked to packages the workspace happens to have. Measure what is
+in the image (`du`, `dive`); don't trust `package.json`.
+
+**In my project (1.7c):** after the multi-stage build, production
+`node_modules` was still **421 MB**. `@prisma/client` declares `prisma` and
+`typescript` as optional peers; the lockfile links them to the API's
+devDependencies, so the Prisma CLI (41 MB), Prisma Studio (43 MB), TypeScript
+(24 MB) and their dependencies came back in.
+
+| | On disk | Compressed |
+|---|---|---|
+| 1.7b, single stage | 1.58 GB | 319 MB |
+| 1.7c, multi-stage | 1.39 GB | 286 MB |
+
+```bash
+# the investigation that found it
+docker run --rm task-manager-api:1.7c sh -c \
+  'cd /app/node_modules/.pnpm && du -sh * | sort -h | tail'
+```
+
+Kept deliberately: running `prisma migrate deploy` (1.7e) needs that CLI.
+
+### Why do `docker images` and `docker image inspect` show different sizes?
+
+With the containerd image store, `docker images` shows **disk usage** - layers
+stored compressed *and* unpacked. `.Size` is the **compressed content**, which
+is what a registry transfers on push and pull. Compare like with like.
+
+### Why run a container as a non-root user? What does it not protect?
+
+If an attacker gets code running as the app's process, root inside the container
+lets them rewrite the app (a persistent backdoor), install tools, read or change
+anything in the container, and start most container-escape techniques. As an
+unprivileged user, with the app's files owned by root, the code is
+**read-only to its own process**.
+
+It does **not** protect what the app itself can reach - the database via its
+credentials, secrets in its environment - and containers share the host kernel,
+so a kernel bug is still a way out. Defence in depth, not a wall.
+
+**In my project (1.7d):** `USER node` (uid 1000, provided by the base image),
+placed last, with **no `--chown`** on the copies. Verified: `whoami` → `node`;
+`touch dist/hacked` → `Permission denied`.
+
+```dockerfile
+COPY --from=build /repo/apps/api/dist apps/api/dist   # owned by root
+USER node                                              # last: runs as uid 1000
+# ✗ COPY --chown=node:node ... would let the process rewrite its own code
+```
+
+### Can a non-root process listen on port 80?
+
+On a normal Linux host, no: ports below 1024 need root or
+`CAP_NET_BIND_SERVICE`. Inside a Docker container, yes: since 20.10 Docker sets
+`net.ipv4.ip_unprivileged_port_start=0` in the container's network namespace.
+
+**In my project:** tested - `--user node` bound port 80 as uid 1000, with
+`ip_unprivileged_port_start` = 0.
+
+### What does a Docker HEALTHCHECK do, and which endpoint should it probe?
+
+Docker runs the command on a schedule and reads its **exit code** (0 = healthy):
+status goes `starting` → `healthy` / `unhealthy`. Failures during
+`--start-period` don't count; `--retries` consecutive failures mark it
+unhealthy. Compose's `depends_on: condition: service_healthy` waits on it.
+
+Probe **liveness**, not readiness: anything that restarts unhealthy containers
+would otherwise turn a database outage into a restart loop.
+
+Slim images have no `curl`/`wget`; installing one adds a tool for an attacker.
+Use the runtime you already have.
+
+**In my project:** probes `/health` with Node's built-in `fetch`, following
+`PORT`. Each probe costs ~250 ms (a Node start-up) versus ~10 ms for curl - a
+deliberate trade.
+
+```dockerfile
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "fetch(`http://localhost:${process.env.PORT ?? 3000}/health`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+```
+
+Straight after `docker run` the status is `health: starting`, not `healthy` -
+it becomes healthy only after the first successful probe.
+
+### Does the Node image's entrypoint break signal handling?
+
+No. `docker-entrypoint.sh` ends with `exec "$@"`, which replaces the shell with
+`node`, so node is still PID 1 and receives SIGTERM. A wrapper script *without*
+`exec` would break it.
+
+### How do you order container start-up in Compose, and why do conditions matter?
+
+`depends_on` without a condition waits only for the container to be *created*.
+Conditions say what "ready" means: `service_healthy` waits for the healthcheck,
+`service_completed_successfully` waits for a container to **exit 0**,
+`service_started` is the weak default.
+
+**In my project (1.7e):** Postgres (`service_healthy` via `pg_isready`) →
+`migrate` (a one-off job, `restart: "no"`) → `api`, which starts only if the
+migration exited 0 - new code never runs against an old schema.
+
+```yaml
+api:
+  depends_on:
+    postgres:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+```
+
+### Where should database migrations run in a containerised app?
+
+As their own step, before the app starts - not inside the app's start command.
+`migrate && node main.js` makes every instance migrate at boot (several replicas
+race, even if a lock makes it safe), mixes a one-off job with a server, and a
+shell wrapper breaks signal handling. Run `migrate deploy` (applies committed
+migrations only), never a dev command that can reset the database.
+
+**In my project:** a `migrate` **build target** (`FROM build AS migrate`) that
+reuses the build stage's Prisma CLI, schema and migrations; Compose runs it
+before the API, and the deploy script (1.10) will run
+`docker compose run --rm migrate` before restarting the API. The runtime image
+no longer needs the CLI.
+
+```dockerfile
+FROM build AS migrate
+WORKDIR /repo/apps/api
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
+
+FROM node:22-bookworm-slim AS runtime   # still the last stage = the default build
+```
+
+### Which stages does `docker build` build in a multi-stage Dockerfile?
+
+With BuildKit, only the stages the **target** depends on (the last stage by
+default), in parallel where they are independent. A stage nothing refers to -
+like a `migrate` target - is skipped. The legacy builder built every stage up
+to the target. Consequence: a job stage must not be the *last* stage, or plain
+builds ship it as the app.
+
+### How do containers in Compose reach each other?
+
+Compose puts every service on a shared network with DNS: the **service name** is
+the hostname (`postgres:5432`). `localhost` inside a container is that
+container. `environment:` overrides `env_file:`, so one `.env` can keep a
+`localhost` URL for running on the host while Compose injects the container one.
+
+Trap: a connection URL built from a password breaks on `@ : / # %` - percent-
+encode them, or generate passwords from letters and digits.
+
+### Why read warnings from database tooling even when "it worked"?
+
+**In my project:** `migrate` printed "Prisma failed to detect the libssl/openssl
+version ... Defaulting to openssl-1.1.x". The slim image has no OpenSSL; Prisma
+picks its native migration engine at **install** time and guessed. "No pending
+migrations" barely exercises the engine - the first real schema change could be
+where it fails. Fixed by installing `openssl` in the build stage **before**
+`pnpm install`, in one `RUN` with the apt cleanup; the runtime stage (pg driver
+adapter, no engine) stays without it.
+
+```dockerfile
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*      # same RUN, or the lists stay in a layer
 ```
 
 ### Does `EXPOSE` publish a port?

@@ -1,4 +1,4 @@
-# Local development stack.
+# The local stack: Postgres, then migrations, then the API.
 #
 # Runs inside the Vagrant VM, not on Windows.
 # See docs/decisions/0002-local-dev-in-a-vagrant-vm.md
@@ -6,11 +6,14 @@
 # Ports are published to the VM; the Vagrantfile forwards them on to Windows,
 # so localhost:5432 works from either side.
 #
-#   docker compose up -d     start
-#   docker compose ps        state, including health
-#   docker compose logs -f   follow the logs
-#   docker compose down      stop and remove containers - DATA SURVIVES
-#   docker compose down -v   also delete the volume - DATA IS GONE
+#   docker compose up -d --build   build and start everything
+#   docker compose up -d postgres  only the database - for running the API with
+#                                  `pnpm --filter api start:dev` (it wants port
+#                                  3000, which the api service also publishes)
+#   docker compose ps              state, including health
+#   docker compose logs -f api     follow one service's logs
+#   docker compose down            stop and remove containers - DATA SURVIVES
+#   docker compose down -v         also delete the volume - DATA IS GONE
 
 services:
   postgres:
@@ -35,13 +38,49 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
     # "Running" and "ready to accept connections" are not the same thing.
-    # pg_isready reports the second. 1.7 will gate other services on this.
+    # pg_isready reports the second; migrate and api wait on it.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  # A one-off job: applies pending migrations, exits 0, and stays exited. The api
+  # starts only after it succeeds - new code never runs against an old schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      target: migrate
+    environment:
+      # The service name, not localhost: inside a container, localhost is the
+      # container itself. Compose's network resolves "postgres" to its address.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      # No target: the last stage, runtime.
+    restart: unless-stopped
+    # Every other variable (JWT secrets, WEB_ORIGIN, COOKIE_SECURE...) from .env.
+    env_file: .env
+    environment:
+      # Overrides .env's localhost URL, which is right for running the API on
+      # the VM but wrong inside a container.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
