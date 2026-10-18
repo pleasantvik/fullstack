@@ -1,15 +1,16 @@
-# API image - 1.7c: multi-stage. A build stage compiles; a clean runtime stage
-# gets only production dependencies and the compiled output. Still root - 1.7d.
+# API image. Multi-stage: a build stage compiles; a clean runtime stage gets only
+# production dependencies and the compiled output, and runs as a non-root user.
 #
 # Build from the repo root - the context must include the workspace lockfile:
-#   docker build -f infra/docker/api.Dockerfile -t task-manager-api:1.7c .
+#   docker build -f infra/docker/api.Dockerfile -t task-manager-api .
 
 # ---------------------------------------------------------------- build ---
 # Everything needed to compile. Its layers stay in the build cache on this
 # machine; none of them are in the final image.
 
-# A fixed major on Debian (glibc), slim variant. Not alpine: musl breaks the
-# prebuilt native binaries Prisma ships, which then need compiling.
+# A fixed major on Debian (glibc), slim variant. Not alpine: native modules and
+# their prebuilt binaries target glibc first, and musl differs in small ways
+# (DNS resolution, allocator). Larger, but fewer surprises.
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /repo
@@ -69,6 +70,16 @@ COPY --from=build /repo/apps/api/dist apps/api/dist
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
 EXPOSE 3000
+
+# Liveness, not readiness (1.5): whatever acts on "unhealthy" must not restart
+# the API because Postgres is down. Written in node because the slim image has no
+# curl or wget, and adding one would add a tool for an attacker.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "fetch(`http://localhost:${process.env.PORT ?? 3000}/health`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
+# Everything above ran as root and stays owned by root: this user can read and
+# run the app but not change it. No --chown on the copies, deliberately.
+USER node
 
 # Exec form (a JSON array): node runs as PID 1 and receives SIGTERM directly,
 # so the shutdown hooks from 1.3 close the database pool. The shell form

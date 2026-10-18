@@ -1221,6 +1221,68 @@ With the containerd image store, `docker images` shows **disk usage** - layers
 stored compressed *and* unpacked. `.Size` is the **compressed content**, which
 is what a registry transfers on push and pull. Compare like with like.
 
+### Why run a container as a non-root user? What does it not protect?
+
+If an attacker gets code running as the app's process, root inside the container
+lets them rewrite the app (a persistent backdoor), install tools, read or change
+anything in the container, and start most container-escape techniques. As an
+unprivileged user, with the app's files owned by root, the code is
+**read-only to its own process**.
+
+It does **not** protect what the app itself can reach - the database via its
+credentials, secrets in its environment - and containers share the host kernel,
+so a kernel bug is still a way out. Defence in depth, not a wall.
+
+**In my project (1.7d):** `USER node` (uid 1000, provided by the base image),
+placed last, with **no `--chown`** on the copies. Verified: `whoami` → `node`;
+`touch dist/hacked` → `Permission denied`.
+
+```dockerfile
+COPY --from=build /repo/apps/api/dist apps/api/dist   # owned by root
+USER node                                              # last: runs as uid 1000
+# ✗ COPY --chown=node:node ... would let the process rewrite its own code
+```
+
+### Can a non-root process listen on port 80?
+
+On a normal Linux host, no: ports below 1024 need root or
+`CAP_NET_BIND_SERVICE`. Inside a Docker container, yes: since 20.10 Docker sets
+`net.ipv4.ip_unprivileged_port_start=0` in the container's network namespace.
+
+**In my project:** tested - `--user node` bound port 80 as uid 1000, with
+`ip_unprivileged_port_start` = 0.
+
+### What does a Docker HEALTHCHECK do, and which endpoint should it probe?
+
+Docker runs the command on a schedule and reads its **exit code** (0 = healthy):
+status goes `starting` → `healthy` / `unhealthy`. Failures during
+`--start-period` don't count; `--retries` consecutive failures mark it
+unhealthy. Compose's `depends_on: condition: service_healthy` waits on it.
+
+Probe **liveness**, not readiness: anything that restarts unhealthy containers
+would otherwise turn a database outage into a restart loop.
+
+Slim images have no `curl`/`wget`; installing one adds a tool for an attacker.
+Use the runtime you already have.
+
+**In my project:** probes `/health` with Node's built-in `fetch`, following
+`PORT`. Each probe costs ~250 ms (a Node start-up) versus ~10 ms for curl - a
+deliberate trade.
+
+```dockerfile
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "fetch(`http://localhost:${process.env.PORT ?? 3000}/health`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+```
+
+Straight after `docker run` the status is `health: starting`, not `healthy` -
+it becomes healthy only after the first successful probe.
+
+### Does the Node image's entrypoint break signal handling?
+
+No. `docker-entrypoint.sh` ends with `exec "$@"`, which replaces the shell with
+`node`, so node is still PID 1 and receives SIGTERM. A wrapper script *without*
+`exec` would break it.
+
 ### Does `EXPOSE` publish a port?
 
 No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.
