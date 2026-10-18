@@ -2,6 +2,7 @@ import { Toast } from "../components/toast";
 import { describeError } from "../lib/describe-error";
 import { dueFormat, PRIORITY_LABEL, STATUS_LABEL } from "./task-format";
 import { useSetTaskDone } from "./use-set-task-done";
+import { useTaskModal } from "./use-task-modal";
 import { type Task, useTasks } from "./use-tasks";
 
 // Built once per module, not once per cell: constructing a formatter loads
@@ -15,6 +16,7 @@ const createdFormat = new Intl.DateTimeFormat(undefined, {
 export function TaskTable() {
   const tasks = useTasks();
   const { setDone, error: saveError, dismissError } = useSetTaskDone();
+  const { openTask } = useTaskModal();
 
   // Plain text, no skeleton: the table appearing in its place is new content,
   // not moved content, so it costs no CLS (measured at 0.00 in 1.6f).
@@ -85,7 +87,7 @@ export function TaskTable() {
           </thead>
           <tbody>
             {items.map((task) => (
-              <TaskRow key={task.id} task={task} onSetDone={setDone} />
+              <TaskRow key={task.id} task={task} onSetDone={setDone} onOpen={openTask} />
             ))}
           </tbody>
         </table>
@@ -103,9 +105,11 @@ export function TaskTable() {
 function TaskRow({
   task,
   onSetDone,
+  onOpen,
 }: {
   task: Task;
   onSetDone: (id: string, done: boolean) => void;
+  onOpen: (id: string) => void;
 }) {
   return (
     <tr className="h-11 border-t border-border">
@@ -120,8 +124,18 @@ function TaskRow({
           className="size-4 accent-accent"
         />
       </td>
-      <td className="truncate px-4" title={task.title}>
-        {task.title}
+      {/* A button, not an onClick on the cell: reachable with Tab, activated by
+          Enter and Space, and announced as clickable. The dialog returns focus
+          here on close. */}
+      <td className="px-4">
+        <button
+          type="button"
+          onClick={() => onOpen(task.id)}
+          title={task.title}
+          className="block w-full truncate text-left hover:underline"
+        >
+          {task.title}
+        </button>
       </td>
       <td className="px-4">{STATUS_LABEL[task.status]}</td>
       <td className="px-4">{PRIORITY_LABEL[task.priority]}</td>

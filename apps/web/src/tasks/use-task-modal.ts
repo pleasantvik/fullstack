@@ -1,15 +1,15 @@
 import { useSearchParams } from "react-router";
 
-// ?task=new opens the create form; ?task=<id> will open edit (5b). In the URL so
-// it survives a reload and Back closes it.
+// ?task=new opens the create form, ?task=<id> the edit form. In the URL so it
+// survives a reload, can be bookmarked, and Back closes it.
 export function useTaskModal() {
   const [params, setParams] = useSearchParams();
 
   // Pushes a history entry, unlike the view toggle: opening a modal feels like
   // going somewhere, so Back is expected to close it.
-  function openNew() {
+  function open(task: string) {
     setParams((current) => {
-      current.set("task", "new");
+      current.set("task", task);
       return current;
     });
   }
@@ -28,5 +28,10 @@ export function useTaskModal() {
     );
   }
 
-  return { task: params.get("task"), openNew, close };
+  return {
+    task: params.get("task"),
+    openNew: () => open("new"),
+    openTask: (id: string) => open(id),
+    close,
+  };
 }

@@ -1,5 +1,6 @@
 import { describeError } from "../lib/describe-error";
 import { PRIORITY_LABEL, STATUS_LABEL, dueFormat } from "./task-format";
+import { useTaskModal } from "./use-task-modal";
 import {
   type Task,
   type TaskPriority,
@@ -33,6 +34,7 @@ function localToday(): string {
 
 export function TaskBoard() {
   const tasks = useTasks();
+  const { openTask } = useTaskModal();
 
   if (tasks.isPending) {
     return <p className="text-sm text-text-muted">Loading tasks...</p>;
@@ -64,6 +66,7 @@ export function TaskBoard() {
           status={status}
           tasks={groups[status]}
           today={today}
+          onOpen={openTask}
         />
       ))}
     </div>
@@ -74,10 +77,12 @@ function Column({
   status,
   tasks,
   today,
+  onOpen,
 }: {
   status: TaskStatus;
   tasks: Task[];
   today: string;
+  onOpen: (id: string) => void;
 }) {
   return (
     // 6.5rem = the 56px top bar plus the page's 24px padding above and below,
@@ -95,7 +100,7 @@ function Column({
       ) : (
         <ul className="flex flex-col gap-2 overflow-y-auto px-3 pb-3">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} today={today} />
+            <TaskCard key={task.id} task={task} today={today} onOpen={onOpen} />
           ))}
         </ul>
       )}
@@ -109,7 +114,15 @@ const PRIORITY_CHIP: Record<TaskPriority, string> = {
   LOW: "border-border text-text-muted",
 };
 
-function TaskCard({ task, today }: { task: Task; today: string }) {
+function TaskCard({
+  task,
+  today,
+  onOpen,
+}: {
+  task: Task;
+  today: string;
+  onOpen: (id: string) => void;
+}) {
   // A finished task is never overdue, however late it was finished.
   const overdue =
     task.status !== "DONE" &&
@@ -117,21 +130,28 @@ function TaskCard({ task, today }: { task: Task; today: string }) {
     task.dueDate.slice(0, 10) < today;
 
   return (
-    <li className="rounded-lg border border-border bg-surface p-3">
-      <p className="text-sm break-words">{task.title}</p>
-      <div className="mt-2 flex items-center gap-2 text-label">
-        <span
-          className={`rounded-full border px-2 ${PRIORITY_CHIP[task.priority]}`}
-        >
-          {PRIORITY_LABEL[task.priority]}
-        </span>
-        {task.dueDate && (
-          <span className={overdue ? "text-danger" : "text-text-muted"}>
-            {overdue && "Overdue · "}
-            {dueFormat.format(new Date(task.dueDate))}
+    // The whole card is the button: one Tab stop per task, Enter or Space opens
+    // it, and the dialog returns focus here on close.
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(task.id)}
+        className="w-full rounded-lg border border-border bg-surface p-3 text-left hover:border-text-muted"
+      >
+        {/* Spans, not p/div: a button may only contain phrasing content. */}
+        <span className="block text-sm break-words">{task.title}</span>
+        <span className="mt-2 flex items-center gap-2 text-label">
+          <span className={`rounded-full border px-2 ${PRIORITY_CHIP[task.priority]}`}>
+            {PRIORITY_LABEL[task.priority]}
           </span>
-        )}
-      </div>
+          {task.dueDate && (
+            <span className={overdue ? "text-danger" : "text-text-muted"}>
+              {overdue && "Overdue · "}
+              {dueFormat.format(new Date(task.dueDate))}
+            </span>
+          )}
+        </span>
+      </button>
     </li>
   );
 }

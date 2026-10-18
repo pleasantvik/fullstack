@@ -2,7 +2,7 @@ import type { FormEventHandler } from "react";
 import type { FieldErrors, UseFormRegisterReturn } from "react-hook-form";
 import { Field, inputClass } from "../components/field";
 import { PRIORITY_LABEL, STATUS_LABEL } from "./task-format";
-import type { TaskFields } from "./use-create-task";
+import type { TaskFields } from "./task-fields";
 
 // Markup only. Create (5a) and edit (5b) pass in their own hook's output.
 export function TaskForm({
