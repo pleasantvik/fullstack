@@ -1101,11 +1101,15 @@ the root lockfile). With `.dockerignore`, the upload was 704 kB.
 
 ### Why `node:22-bookworm-slim` and not alpine?
 
-Alpine uses **musl** instead of glibc. Native modules (argon2, Prisma tooling)
-ship prebuilt binaries for glibc; on musl they need compiling or different
-binaries - a class of "works locally, crashes in the container" bugs. Slim
-Debian is larger but compatible. Pin at least the major version, never
-`latest`.
+Alpine uses **musl** instead of glibc. Most native Node modules and their
+prebuilt binaries are built and tested against glibc first; on musl some need a
+separate build or compiling, and musl differs in small ways (DNS resolution,
+memory allocation performance). Slim Debian is larger but the safer default.
+Pin at least the major version, never `latest`.
+
+**In my project:** I first claimed argon2 would break on musl - wrong:
+`@node-rs/argon2` publishes a musl build too. Check the actual packages before
+citing them; the general glibc argument still holds.
 
 ### Exec form or shell form for CMD?
 
@@ -1118,6 +1122,104 @@ signals: Docker waits 10 s, then SIGKILLs it - open connections are cut.
 CMD ["node", "dist/main.js"]   # ✓ node is PID 1, gets SIGTERM
 CMD node dist/main.js          # ✗ /bin/sh is PID 1, SIGTERM never reaches node
 ```
+
+### How does Docker's build cache decide what to rebuild?
+
+A layer's cache key is its **parent layer** plus the instruction. For `COPY`/
+`ADD` the key includes a **checksum of the files copied**; for `RUN`, only the
+**command's text** (so `RUN apt-get update` stays cached however stale the
+package lists get). Once one layer misses, **every layer after it misses** - the
+cache is a chain.
+
+So order instructions from rarely changing to often changing: copy only the
+dependency manifests, install, **then** copy the source.
+
+Docker compares bytes, not meaning: one added space in `package.json` (no
+dependency changed) invalidates the install just the same.
+
+**In my project (1.7b):**
+
+| Change | `COPY . .` before install | Manifests → install → source |
+|---|---|---|
+| One comment in `main.ts` | 2 min 7 s | **20 s** (install `CACHED`, export 0.6 s) |
+| One space in `apps/api/package.json` | - | 2 min 17 s |
+
+In the second test, `COPY apps/web/package.json` re-ran although that file had
+not changed: its parent layer had.
+
+```dockerfile
+# ✗ any source change reinstalls every dependency
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+# ✓ the install depends only on the manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile
+COPY . .
+```
+
+Trap: `COPY . .` now lands on top of an installed `node_modules`; it survives
+only because `.dockerignore` excludes `**/node_modules`. The ignore file is now
+about correctness, not just security and speed.
+
+### What is a multi-stage build, and why is the build stage discarded?
+
+Several `FROM`s in one Dockerfile. Earlier stages install tools and compile;
+the **last** stage starts from a clean base and receives only what it needs via
+`COPY --from=<stage>`. Only the last stage becomes the image: compilers, CLIs,
+source and caches never ship. That cuts the size (every deploy downloads it) and
+the attack surface (tools an attacker could use, and CVEs a scanner reports).
+Earlier stages are not lost - their layers stay in the build cache on the
+machine that built them.
+
+Naive alternative: one stage and `rm -rf` at the end - the files stay in the
+earlier layers, so nothing shrinks.
+
+```dockerfile
+FROM node:22-bookworm-slim AS build
+RUN pnpm install --frozen-lockfile --filter api        # dev deps: compiler, CLIs
+COPY . .
+RUN pnpm --filter api build                            # → apps/api/dist
+
+FROM node:22-bookworm-slim AS runtime                  # clean start
+RUN pnpm install --frozen-lockfile --prod --filter api # production deps only
+COPY --from=build /repo/apps/api/dist apps/api/dist    # the only thing that crosses
+CMD ["node", "dist/main.js"]
+```
+
+### Does `--prod` guarantee a lean production install?
+
+No. `--prod` drops the project's own devDependencies, but a production
+dependency's **peer dependencies** come with it - including *optional* peers the
+lockfile has linked to packages the workspace happens to have. Measure what is
+in the image (`du`, `dive`); don't trust `package.json`.
+
+**In my project (1.7c):** after the multi-stage build, production
+`node_modules` was still **421 MB**. `@prisma/client` declares `prisma` and
+`typescript` as optional peers; the lockfile links them to the API's
+devDependencies, so the Prisma CLI (41 MB), Prisma Studio (43 MB), TypeScript
+(24 MB) and their dependencies came back in.
+
+| | On disk | Compressed |
+|---|---|---|
+| 1.7b, single stage | 1.58 GB | 319 MB |
+| 1.7c, multi-stage | 1.39 GB | 286 MB |
+
+```bash
+# the investigation that found it
+docker run --rm task-manager-api:1.7c sh -c \
+  'cd /app/node_modules/.pnpm && du -sh * | sort -h | tail'
+```
+
+Kept deliberately: running `prisma migrate deploy` (1.7e) needs that CLI.
+
+### Why do `docker images` and `docker image inspect` show different sizes?
+
+With the containerd image store, `docker images` shows **disk usage** - layers
+stored compressed *and* unpacked. `.Size` is the **compressed content**, which
+is what a registry transfers on push and pull. Compare like with like.
 
 ### Does `EXPOSE` publish a port?
 
