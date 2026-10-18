@@ -301,6 +301,32 @@ expose effects that do not clean up. It does not happen in production. It also
 means anything timed in dev runs twice - the second run is faster because the
 JavaScript engine has optimised the function.
 
+### How do you reset a component's state, e.g. a form, when its input changes?
+
+Change its `key`. React treats a different key as a different component:
+unmount, mount, fresh state. Needed because many things read their input
+**once at mount**: `useState(initial)`, react-hook-form's `defaultValues`.
+
+**In this project:** the edit form is keyed by task id and only mounts once the
+task has loaded; a background refetch never overwrites what the user is typing
+because `defaultValues` are not re-read.
+
+### Why `useState(() => compute())` instead of `const x = compute()`?
+
+The initialiser runs on the first render only; a plain expression runs on
+every render. **In this project:** the edit form's starting values are frozen
+with it. Recomputed each render, they would follow a background refetch, an
+untouched field would look edited, and the old value would be sent back over
+another tab's change.
+
+### What is react-hook-form's Proxy subscription, and what is its trap?
+
+`formState` is a `Proxy`: a component re-renders only for the properties it
+**reads during render** (a re-render optimisation). The trap: a property read
+only inside an event handler (`dirtyFields`) may never be tracked and come back
+empty. **In this project:** "changed fields" is computed by comparing values
+with the frozen starting values instead.
+
 ---
 
 ## 5. Server state with TanStack Query
@@ -392,6 +418,69 @@ refreshes (one 204, two 401) without it; one with it. Not covered: two *tabs*
 refreshing at once (they share cookies, not the promise) - Web Locks or a
 server-side grace window would fix that.
 
+### What is a query key factory, and when is it worth it?
+
+One object that builds every key for a feature as a hierarchy, so each level is
+a prefix that targets everything beneath it:
+
+```ts
+taskKeys.all          // ["tasks"]
+taskKeys.lists()      // ["tasks", "list"]
+taskKeys.list(params) // ["tasks", "list", { limit: 100 }]
+taskKeys.detail(id)   // ["tasks", "detail", id]
+```
+
+Worth it once there is more than one *shape* under a prefix. **In this
+project:** rejected while there was one list query (pre-building); adopted when
+a detail query arrived, because the checkbox's `setQueriesData(["tasks"])`
+updater expected a `TaskList` and would have thrown on a `Task`. Writes now
+target `lists()`; invalidation targets `all`.
+
+### How do you open a detail view instantly using data you already have?
+
+`initialData` seeds a new query from another cache entry (the list), so it
+starts in `success` with no request. Add **`initialDataUpdatedAt`** with the
+source's age: without it the copy counts as fetched *now* and a stale copy is
+treated as fresh. With it, an old copy is shown at once **and** refetched in the
+background - stale-while-revalidate.
+
+`placeholderData` differs: shown but never stored, and the query always
+fetches. Use it for "something to look at"; use `initialData` when the copy is
+real data.
+
+Trap: `initialData` runs once per cache entry. A detail cached from an earlier
+open is reused for `gcTime` (5 min) even if the list changed since - so
+mutations must invalidate details too.
+
+### `removeQueries` vs `invalidateQueries`?
+
+Invalidate marks stale and **refetches immediately if anything is observing**.
+Remove deletes the entry. **In this project:** after deleting a task, the detail
+is *removed* - invalidating would refetch it while the modal still observed it,
+and the refetch would 404 on screen.
+
+### Why write a mutation's response into the cache?
+
+`setQueryData(detail(id), updated)` with the PATCH response makes the cache
+correct with zero extra requests; an invalidate would spend a GET learning what
+the response already said.
+
+### What is a lost update, and how do you prevent it?
+
+Two clients read the same record, both edit, the second save overwrites the
+first's change. Sending **only changed fields** narrows it to fields both sides
+edited. Closing it needs **optimistic concurrency control** on the server: a
+`version` column or an ETag; the client sends `If-Match`, and a mismatch gets
+**409/412** instead of a silent overwrite. **In this project:** partial PATCH
+now; versioning deferred to Milestone 3, when team sharing makes concurrent
+edits real.
+
+### Is DELETE idempotent? How should a client treat a 404 on delete?
+
+The *effect* of DELETE is idempotent (gone is gone); the *response* may differ
+(204, then 404). From the user's point of view a 404 means the goal is already
+met. **In this project:** a 404 on delete is treated as success.
+
 ---
 
 ## 6. State in the URL
@@ -456,6 +545,15 @@ origin (`origin: true`) with credentials is a vulnerability; send
 `Vary: Origin` when the header depends on the request; response headers are
 hidden from JavaScript unless listed in `exposedHeaders`.
 
+### What is IDOR, and where must ownership be enforced?
+
+Insecure Direct Object Reference: accessing someone else's record by changing an
+id in a URL or request. Ownership must be enforced **on the server, in the
+query itself** - hiding a button protects nothing. **In this project:** every
+task query filters on `userId` in the `where` clause, and another user's task
+returns **404, not 403**, so the API does not even confirm it exists. The UI
+shows the same message for 404 and 400 (not a UUID).
+
 ### What is an open redirect?
 
 A login page that redirects to a URL taken from the query string
@@ -515,6 +613,21 @@ OpenAPI docs before writing a request.
   focus moved in and restored. A `div role="dialog"` needs all of that
   rebuilt in JavaScript.
 - **Wrapping an input in its `<label>`** associates them without ids.
+- **`<button>`, not `<div onClick>`:** Tab order, Enter and Space, the button
+  role and `:focus-visible` come free; a div needs `tabIndex`, `role` and key
+  handling to approach it.
+- **Content model:** a `<button>` may contain only phrasing content (`span`,
+  not `p` or `div`). Browsers render invalid nesting anyway; the accessibility
+  tree may not match.
+- **Focus management when an element disappears:** if the focused element is
+  removed, focus falls to `<body>` and a screen-reader user is lost. Move it
+  deliberately (`autoFocus`, or `.focus()` after the re-render).
+- **Two-step confirmation must use a different button:** relabelling one button
+  ("Delete" → "Confirm") keeps focus on it, so Enter twice deletes. Replace it
+  with Cancel/Delete and focus Cancel.
+- **Avoid `window.confirm()`:** synchronous - blocks the main thread (timers,
+  rendering, network callbacks) until answered, counts against INP, cannot be
+  styled, and can be silently suppressed by the browser.
 
 ---
 
