@@ -1,10 +1,10 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.6g — board, toggle, task modal, optimistic updates (5b next)
+**Active increment:** 1.6 closed - PR for 1.6g open. Next: **1.7 — Containerise**
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-18
 
 ## Start here next session
 
@@ -34,26 +34,25 @@ measuring** - it holds port 5173 and serves an old build that looks almost
 right (it fooled us once). `strictPort` makes the dev server refuse the port
 rather than quietly moving to 5174.
 
-**Check first: is slice 4 committed?** At the end of 2026-10-17 three commits
-were still pending on `feat/1.6g-board` - the optimistic checkbox (slice 4),
-the New task modal (5a), and the docs. Commit messages were drafted in the
-session; if lost, rewrite from the milestone file's 1.6 measurements.
+**First: is the 1.6g PR merged?** `feat/1.6g-board` carries slices 1-5 of
+1.6g, the refactor to one component per file, and the 1.6 close-out docs. Merge
+it, then branch for 1.7 from `origin/main`.
 
-Then **1.6g 5b — edit and delete a task**, explained but not yet written:
-- task title (table) and card (board) become `<button>`s opening `?task=<id>`
-- detail query `GET /tasks/:id`, seeded from the list cache with `initialData`
-- PATCH only `dirtyFields` (lost updates); clearing a field sends `null` -
-  check the API accepts it
-- delete with a two-step button, not `window.confirm()`; then remove the
-  detail query, invalidate the list, close
-- 404 on `?task=<id>` shows a clear message
+Then **ADR 0009 - reject unknown request fields** (`docs/decisions/`), still
+*Proposed*. Decide it, then it is a two-line backend change in `main.ts`'s
+`ValidationPipe` plus a 400 for an empty PATCH - yours to write. Do it before
+1.7, so the image built in 1.7 has it.
 
-Then the **1.6 close-out**: milestone note (measurements already in the
-milestone file), post in `docs/posts/`, `system-overview.md`, this file, one PR
-for 1.6g. Plus an ADR on `forbidNonWhitelisted`.
+Then **1.7 — Containerise**: Dockerfiles for api and web, the full stack in
+`docker-compose.yml`. Open question carried from 1.6a: `VITE_*` values are baked
+in at build time, so one web image cannot be promoted between environments the
+way the API image can.
 
-Frontend explanations are technical only (no analogies) unless asked. Every
-concept goes into `docs/interview-notes.md` at the end of its slice.
+Frontend conventions (settled at the 1.6 close-out): one component per file;
+components presentational; logic in hooks or plain functions. Frontend
+explanations are technical only unless an analogy is asked for; optimisation,
+security, accessibility, caching and rendering always explained in depth. Every
+concept goes into `docs/interview-notes.md`.
 
 Build only the screens `docs/design/ui-spec.md` assigns to Milestone 1.
 
@@ -74,7 +73,7 @@ Known quirks, deliberately not fixed:
 
 - `Database connection closed` does not appear on Ctrl+C in development
 - A fresh clone must run `pnpm --filter api db:generate` before it type-checks
-- No formatter or linter yet - belongs with CI in 1.8
+- No formatter or linter yet - belongs with CI in 1.8 (the web app has no tests either; `task-rules.ts` is the first easy target)
 - No absolute session lifetime on refresh token chains (ADR 0006)
 - Search uses `ILIKE '%term%'`, which no B-tree index helps. Milestone 5
 - No tests yet. 1.8 is where CI needs something to run
@@ -96,6 +95,14 @@ means the VM. Pasting VM commands into Windows cost an hour once already.
   including small doc changes.
 
 ## Recently completed
+
+**1.6 — Frontend (a-g).** React + Vite + Tailwind 4 web app against the local
+API: auth in httpOnly cookies (ADR 0008) with a single-flight refresh, TanStack
+Query for server state, view and modal state in the URL, table and board views,
+an optimistic done checkbox with targeted rollback, and create / edit / delete
+in a native `<dialog>`. Measured on production builds throughout - numbers and
+decisions in the milestone note. Open: table mount cost, an accessibility audit
+at 95, ADR 0009.
 
 **User.name.** Added as a nullable column - one line of SQL, no backfill,
 because nullable and additive is the cheap case. Required in `RegisterDto`
