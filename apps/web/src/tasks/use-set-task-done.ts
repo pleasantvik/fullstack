@@ -1,18 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { describeError } from "../lib/describe-error";
-import { TASKS_KEY, type Task, type TaskList, type TaskStatus } from "./use-tasks";
+import { type Task, type TaskList, type TaskStatus, taskKeys } from "./use-tasks";
 
 type Vars = { id: string; done: boolean };
 
 export function useSetTaskDone() {
   const queryClient = useQueryClient();
 
-  // Every cached list under the prefix, not one key: the same task can sit in
-  // more than one list once lists take parameters. Touches one task only, so a
-  // second click's change on another row is never caught up in this one.
+  // Lists only: a detail query under the same "tasks" prefix holds a Task, not
+  // a TaskList, and this updater would throw on it. Every list, though - the
+  // same task can sit in more than one once lists take parameters. Touches one
+  // task only, so a second click's change on another row is never caught up.
   function writeStatus(id: string, status: TaskStatus) {
-    queryClient.setQueriesData<TaskList>({ queryKey: TASKS_KEY }, (list) =>
+    queryClient.setQueriesData<TaskList>({ queryKey: taskKeys.lists() }, (list) =>
       list
         ? {
             ...list,
@@ -30,13 +31,14 @@ export function useSetTaskDone() {
 
     onMutate: async ({ id, done }) => {
       // A refetch already in flight was answered before this click. Left to
-      // land, it would overwrite the optimistic write with the old status.
-      await queryClient.cancelQueries({ queryKey: TASKS_KEY });
+      // land, it would overwrite the optimistic write with the old status - a
+      // detail refetch of this task as much as a list one, hence all.
+      await queryClient.cancelQueries({ queryKey: taskKeys.all });
 
       // Only this task's status is remembered, not the whole list. Restoring a
       // whole-list snapshot would also undo any other row changed since.
       const previousStatus = queryClient
-        .getQueriesData<TaskList>({ queryKey: TASKS_KEY })
+        .getQueriesData<TaskList>({ queryKey: taskKeys.lists() })
         .flatMap(([, list]) => list?.items ?? [])
         .find((task) => task.id === id)?.status;
 
@@ -50,7 +52,9 @@ export function useSetTaskDone() {
 
     // Success or failure, the server has the last word: whatever the
     // optimistic write guessed wrong (updatedAt, at least) gets corrected.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: TASKS_KEY }),
+    // All, not lists: a cached detail of this task is stale too, and its
+    // initialData will not run again to fix it.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: taskKeys.all }),
   });
 
   return {
