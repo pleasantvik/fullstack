@@ -827,6 +827,27 @@ app.enableCors({
 });
 ```
 
+### Why is `Object.keys(dto)` never empty for a class-based DTO?
+
+With TypeScript's `useDefineForClassFields` (the default for targets ES2022 and
+later), a declared field (`title: string;`) becomes an **own property set to
+`undefined`** when the class is instantiated. So "was anything sent?" must check
+values, not keys.
+
+**In my project:** the empty-PATCH check was first drafted as
+`Object.keys(dto).length === 0` - it would never have fired, because the API
+compiles to ES2023.
+
+```ts
+class UpdateTaskDto { title?: string; status?: TaskStatus; }
+Object.keys(new UpdateTaskDto());   // ["title", "status"] under ES2022+ semantics
+
+// ✓ check values
+if (Object.values(dto).every((v) => v === undefined)) {
+  throw new BadRequestException("Send at least one field to update.");
+}
+```
+
 ### What is IDOR, and where must ownership be enforced?
 
 Insecure Direct Object Reference: accessing someone else's record by changing an
@@ -906,14 +927,14 @@ A request that "succeeds" without doing anything. **In this project:** the
 first draft of the checkbox sent `{ done: true }`; the API has `status`, not
 `done`. NestJS's `ValidationPipe` with `whitelist: true` **strips** unknown
 fields, so the PATCH returned 200 with the task unchanged - no error anywhere.
-`forbidNonWhitelisted: true` would turn it into a 400. Lesson: read the DTO or
-OpenAPI docs before writing a request.
+`forbidNonWhitelisted: true` turns it into a 400 (now adopted). Lesson: read the
+DTO or OpenAPI docs before writing a request, and make the API fail loudly.
 
 ```ts
 // NestJS global pipe
 new ValidationPipe({
   whitelist: true,              // strips unknown fields: { done: true } → {} → 200, nothing changed
-  forbidNonWhitelisted: true,   // proposed (ADR 0009): unknown fields → 400 "property done should not exist"
+  forbidNonWhitelisted: true,   // adopted: unknown fields → 400 "property done should not exist"
   transform: true,
 });
 ```

@@ -24,12 +24,15 @@ async function bootstrap() {
   // framework logs keep their old format.
   app.useLogger(app.get(Logger))
 
-  // Validates incoming request bodies against DTOs. Inert until 1.5, because
-  // there are no DTOs yet. Here because it is bootstrap configuration rather
-  // than a feature.
+  // Validates every body and query string against its DTO. Bootstrap
+  // configuration rather than a feature, so it lives here.
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // strip properties with no decorator on the DTO
+      whitelist: true, // properties with no decorator on the DTO are not allowed...
+      // ...and are rejected rather than stripped (ADR 0009). Stripping turned a
+      // misnamed field into a silent no-op: PATCH { "done": true } answered 200
+      // and changed nothing. Applies to query strings too - no ad-hoc params.
+      forbidNonWhitelisted: true,
       transform: true, // same string-to-type conversion as the config above
     }),
   )

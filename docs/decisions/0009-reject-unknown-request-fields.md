@@ -1,7 +1,7 @@
 # 0009 — Reject unknown request fields
 
 **Date:** 2026-10-18
-**Status:** Proposed — decide and implement at the start of 1.7
+**Status:** Accepted (2026-10-18)
 
 ## Context
 
@@ -31,7 +31,7 @@ parameter (a cache-buster such as `?_=123`) would also be a 400.
 **Also reject empty PATCH bodies.** Independent of the above: `{}` is never a
 meaningful update and could answer 400.
 
-## Recommendation
+## Decision
 
 **Reject unknown fields, and reject an empty PATCH.** There is one client, owned
 by the same person, so tolerance buys nothing today, and the bug it hid cost

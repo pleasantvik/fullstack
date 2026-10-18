@@ -40,9 +40,9 @@ Content-Type: application/json
 { "title": "A task with nothing but a title" }
 
 ###
-# A smuggled userId -> 201, and the task still belongs to the caller.
-# whitelist: true strips it before the handler sees it, and the service spreads
-# the guard's userId last regardless.
+# A smuggled userId -> 400 "property userId should not exist" (ADR 0009).
+# Before, whitelist stripped it and the task was created as the caller's; the
+# service still spreads the guard's userId last, as a second line of defence.
 POST {{host}}/tasks
 Content-Type: application/json
 
@@ -87,6 +87,21 @@ PATCH {{host}}/tasks/{{create.id}}
 Content-Type: application/json
 
 { "status": "IN_PROGRESS" }
+
+###
+# A field the API does not have -> 400 "property done should not exist".
+# The bug that led to ADR 0009: this used to answer 200 and change nothing.
+PATCH {{host}}/tasks/{{create.id}}
+Content-Type: application/json
+
+{ "done": true }
+
+###
+# Nothing to update -> 400 "Send at least one field to update."
+PATCH {{host}}/tasks/{{create.id}}
+Content-Type: application/json
+
+{}
 
 ###
 # A well-formed id that does not exist -> 404.
