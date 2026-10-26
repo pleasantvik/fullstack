@@ -82,6 +82,21 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # The built frontend behind nginx, with /api proxied to the api service
+  # (ADR 0010). Open http://localhost:8080 - Vite keeps 5173 for development.
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    # nginx resolves "api" once, at startup, and refuses to start if it cannot.
+    # Healthy, not just started, so the first proxied request has somewhere to go.
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   postgres_data:
     name: task-manager-postgres-data
