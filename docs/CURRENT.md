@@ -1,7 +1,7 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.6 closed - PR for 1.6g open. Next: **1.7 — Containerise**
+**Active increment:** 1.7 — Containerise (a–e done; **1.7f next**)
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
 **Last updated:** 2026-10-18
@@ -38,19 +38,29 @@ measuring** - it holds port 5173 and serves an old build that looks almost
 right (it fooled us once). `strictPort` makes the dev server refuse the port
 rather than quietly moving to 5174.
 
-**First: is the 1.6g PR merged?** `feat/1.6g-board` carries slices 1-5 of
-1.6g, the refactor to one component per file, and the 1.6 close-out docs. Merge
-it, then branch for 1.7 from `origin/main`.
+**First: is the 1.7e PR merged?** (`feat/1.7e-compose-api`: migrate target,
+API in Compose, OpenSSL in the build stage.) Merge it, then branch for 1.7f
+from `origin/main`.
 
-Then **ADR 0009 - reject unknown request fields** (`docs/decisions/`), still
-*Proposed*. Decide it, then it is a two-line backend change in `main.ts`'s
-`ValidationPipe` plus a 400 for an empty PATCH - yours to write. Do it before
-1.7, so the image built in 1.7 has it.
+Done in 1.7 so far: API image (1.7a-d, #25 - naive 1.58 GB → multi-stage,
+non-root, healthcheck; rebuild after a code change 2 min 7 s → 20 s) and Compose
+running postgres → migrate → api (1.7e). Numbers are in the commit messages and
+`docs/interview-notes.md` section 10.
 
-Then **1.7 — Containerise**: Dockerfiles for api and web, the full stack in
-`docker-compose.yml`. Open question carried from 1.6a: `VITE_*` values are baked
-in at build time, so one web image cannot be promoted between environments the
-way the API image can.
+Then **1.7f — web image**, which opens with a decision waiting since 1.6a:
+`VITE_API_URL` is baked into the bundle at build time, so a web image cannot be
+promoted between environments like the API image. Options: one image per
+environment; a config file written when the container starts; or serving the
+API on the **same origin** behind Nginx (`/api`), which removes the problem and
+CORS - and ties into 1.9's Nginx. Decide first, then a multi-stage build: Vite
+build → Nginx serving static files with an SPA fallback.
+
+Then **1.7g** - `docker compose up` on a clean checkout runs everything. That is
+the slice 1.7 exists for: definition-of-done item 1.
+
+Open from 1.7: ~170 MB of Prisma CLI still in the runtime image as an optional
+peer of `@prisma/client` - no longer needed there now migrations have their own
+target; base image not pinned by digest; `X-Powered-By: Express` header.
 
 Frontend conventions (settled at the 1.6 close-out): one component per file;
 components presentational; logic in hooks or plain functions. Frontend
