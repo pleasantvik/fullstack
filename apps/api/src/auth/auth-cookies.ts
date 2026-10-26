@@ -1,5 +1,6 @@
 import type { CookieOptions, Response } from "express";
 import ms, { type StringValue } from "ms";
+import { API_PREFIX } from "../api-prefix.js";
 
 export const ACCESS_COOKIE = "access_token";
 export const REFRESH_COOKIE = "refresh_token";
@@ -7,18 +8,22 @@ export const REFRESH_COOKIE = "refresh_token";
 // `secure` comes from COOKIE_SECURE, which defaults to true and can only be
 // switched off by an explicit opt-out - never by NODE_ENV, where a wrong value
 // would quietly ship cookies to production without Secure.
+//
+// /api, not /: the web app and the API share one origin (ADR 0010), so Path=/
+// would attach the token to every static file request - index.html, every
+// asset - where it is wasted bytes and can end up in access logs.
 const accessOptions = (secure: boolean): CookieOptions => ({
   httpOnly: true,
   secure,
   sameSite: "strict",
-  path: "/",
+  path: `/${API_PREFIX}`,
 });
 
-// /auth, not /auth/refresh: logout needs this cookie too, to revoke the token
-// server-side. Never sent to /tasks.
+// /api/auth, not /api/auth/refresh: logout needs this cookie too, to revoke the
+// token server-side. Never sent to /api/tasks.
 const refreshOptions = (secure: boolean): CookieOptions => ({
   ...accessOptions(secure),
-  path: "/auth",
+  path: `/${API_PREFIX}/auth`,
 });
 
 export interface CookieSettings {

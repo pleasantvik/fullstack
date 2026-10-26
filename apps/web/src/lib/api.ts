@@ -1,4 +1,7 @@
-const BASE = import.meta.env.VITE_API_URL;
+// Relative, the same in every environment: the API is on this page's origin,
+// behind Nginx in the image and Vite's dev proxy locally (ADR 0010). Nothing
+// environment-specific is baked into the bundle.
+const BASE = "/api";
 
 // The only error type the rest of the app ever sees. Whatever library sits
 // underneath - fetch today, perhaps something else later - callers catch this.
