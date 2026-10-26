@@ -1359,6 +1359,153 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*      # same RUN, or the lists stay in a layer
 ```
 
+### How do you make one frontend image run in every environment?
+
+Values like `import.meta.env.VITE_*` are inlined into the bundle at build time,
+so an image built with an API URL has that URL frozen inside it. Options: an
+image per environment (breaks "build once, promote the same artefact"), a config
+file written at container start (one image, but a render-blocking request and a
+start script), or **serve the API on the same origin** behind a reverse proxy, so
+the frontend calls a relative `/api` and there is nothing to configure.
+
+**In my project (ADR 0010):** same origin - Nginx serves the static files and
+proxies `/api/*` to the API; locally Vite's dev server plays Nginx's part. Same
+origin also removed CORS preflights and simplified cookies.
+
+```ts
+// ✗ frozen into the bundle per build
+const BASE = import.meta.env.VITE_API_URL;
+// ✓ same in every environment
+const BASE = "/api";
+```
+```ts
+// vite.config.ts - development mirrors production
+server: { proxy: { "/api": "http://localhost:3000" } }
+```
+
+### Behind a proxy, should the proxy strip a path prefix or should the app own it?
+
+The app should own it. Anything that embeds a path - cookie `Path`, redirects,
+links the app generates - is computed by the app. If the proxy strips `/api`,
+the app sets a refresh cookie with `Path=/auth`; the browser requests
+`/api/auth/refresh`, which does not start with `/auth`, and **never sends the
+cookie** - sessions die at the first access-token expiry, silently.
+
+**In my project:** Nest's `setGlobalPrefix('api')`, one shared `API_PREFIX`
+constant, and cookie paths built from it. Verified by deleting the access
+cookie and reloading: `me` 401 → `refresh` 204 → `me` 200.
+
+```ts
+app.setGlobalPrefix(API_PREFIX, { exclude: ["health", "health/ready"] });
+const refreshOptions = (secure) => ({ ...accessOptions(secure), path: `/${API_PREFIX}/auth` });
+```
+
+### How does a cookie's `Path` work, and why narrow it?
+
+`Path` is a **prefix match**: `Path=/` is sent with every request to the
+origin. When the frontend and API share an origin, a token cookie at `/` rides
+along on `index.html` and every static asset - wasted bytes, and exposure in
+access logs. Narrow it to where it is needed. A cookie can only be cleared with
+the same path it was set with - so set and clear must share one options builder.
+
+**In my project:** `access_token` `Path=/api`, `refresh_token` `Path=/api/auth`;
+`setAuthCookies` and `clearAuthCookies` both call the same builders, so logout
+followed the path change without an edit.
+
+### Why keep health endpoints off the public prefix?
+
+The proxy forwards only `/api/*`, so excluding `/health` and `/health/ready`
+from the prefix makes them reachable inside the Docker network (healthchecks,
+monitoring) but not from the internet - and `/health/ready` reveals whether the
+database is reachable. It also kept the image's `HEALTHCHECK` (`/health`)
+working; prefixed, it would have 404'd and marked the container unhealthy.
+
+### How should a static frontend be cached after a deploy?
+
+Two rules. **Hashed assets** (`index-DktfV1Vk.js` - the name changes when the
+content does) get `Cache-Control: public, max-age=31536000, immutable`: kept a
+year, never even revalidated. **`index.html`** gets `no-cache` - which means
+"revalidate before reusing", not "don't store": the browser asks every time and
+gets a cheap **304** via the ETag when nothing changed. `index.html` names the
+current asset files, so a stale copy pins users to last release's JavaScript -
+the classic "users still see the old version" bug.
+
+**In my project (1.7f):** verified with `curl -I` - `/` → `no-cache`,
+`/assets/…js` → `max-age=31536000, immutable`, plus `Content-Encoding: gzip`
+(nginx does not compress by default).
+
+```nginx
+location /assets/ {
+    try_files $uri =404;                       # a missing script is a real 404
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+location / {
+    try_files $uri $uri/ /index.html;          # SPA fallback
+    add_header Cache-Control "no-cache";
+}
+```
+
+### What is an SPA fallback, and where must it not apply?
+
+Client-side routes have no file on the server, so a reload on one is a 404
+unless the server returns `index.html` and lets the router decide. It must not
+apply to `/assets/` (a typo'd script would silently receive HTML) or `/api/`
+(an API path must never come back as an HTML page).
+
+### What does a trailing slash in nginx `proxy_pass` change?
+
+`proxy_pass http://api:3000;` (no URI) passes the request path through
+unchanged. `proxy_pass http://api:3000/;` **replaces the matched location
+prefix**: `location /api/` + `/api/tasks` → the upstream sees `/tasks`. One
+character decides whether the app receives its prefix.
+
+### What headers should a reverse proxy pass on?
+
+`Host` (the name the browser used), `X-Real-IP` and `X-Forwarded-For` (the
+client's address - `$proxy_add_x_forwarded_for` appends, keeping a chain), and
+`X-Forwarded-Proto` (http or https, which the app cannot see once TLS ends at
+the proxy). Without them every request appears to come from the proxy. The app
+must trust them deliberately - only from its own proxy.
+
+### Why does nginx fail with "host not found in upstream", and when is it a stale container?
+
+nginx resolves a `proxy_pass` hostname **once, at startup**, and exits if it
+cannot (a restart policy then loops it). It also keeps that IP: recreate the
+upstream container and nginx may send to the old address (**502**) until it is
+restarted.
+
+**In my project:** after a `docker compose up` failed with "port 3000 already
+in use", the next `up` reused the half-created `api` container - healthy inside,
+but with no published port, no name on the network, and the previous image.
+nginx looped on "host not found in upstream api". Fixed with
+`docker compose up -d --force-recreate api web`. Lesson for deploys: a failed
+`up` can leave half-built containers that a plain `up` reuses.
+
+### Which nginx image, and why not run as root?
+
+The official `nginx` image starts its master process as root. The
+`nginxinc/nginx-unprivileged` variant runs as a non-root user and listens on
+**8080**. Alpine is fine for nginx - the musl concern applies to Node's native
+modules. `server_tokens off` hides the version in headers and error pages.
+
+**In my project:** the web image is **82 MB** on disk (the API's is 1.39 GB):
+nginx, one config file and the built `dist/` - no Node.
+
+### Does `depends_on` order containers after a host reboot?
+
+No. `depends_on` (and its conditions) applies only when `docker compose up`
+runs. After a reboot, the Docker daemon restarts every container with a restart
+policy **independently and concurrently** - no waiting for health, no one-off
+jobs re-run. Services must tolerate starting before their dependencies (retry
+the database connection), and deploy steps like migrations must be run
+explicitly, never left to restart policies.
+
+**In my project:** after `vagrant reload`, `postgres`, `api` and `web` were back
+within three minutes (`restart: unless-stopped`), while `migrate` stayed at its
+earlier `Exited (0)`. It worked because the API reconnects and there was nothing
+new to migrate - a reboot mid-deploy could start a new API before its
+migrations.
+
 ### Does `EXPOSE` publish a port?
 
 No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.

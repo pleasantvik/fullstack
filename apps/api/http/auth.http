@@ -9,7 +9,9 @@
 # The jar holds ONE identity for localhost. Logging in replaces whoever was
 # logged in before, exactly as in a browser.
 
-@host = http://localhost:3000
+# Routes live under /api (ADR 0010); health deliberately does not.
+@origin = http://localhost:3000
+@host = {{origin}}/api
 @email = ada@example.com
 @password = correct-horse-battery
 

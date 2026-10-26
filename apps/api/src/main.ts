@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import cookieParser from 'cookie-parser'
 import { Logger } from 'nestjs-pino'
+import { API_PREFIX } from './api-prefix.js'
 import { AppModule } from './app.module.js'
 import { NodeEnv, type EnvironmentVariables } from './config/env.validation.js'
 
@@ -46,6 +47,13 @@ async function bootstrap() {
   app.enableShutdownHooks()
 
   const config: ConfigService<EnvironmentVariables, true> = app.get(ConfigService)
+
+  // Every route under /api: the web app reaches the API through a proxy on its
+  // own origin (ADR 0010). The API owns its public path - a proxy that stripped
+  // the prefix would leave cookie paths pointing at addresses the browser never
+  // requests. Health stays unprefixed: the proxy forwards only /api/*, so these
+  // are reachable inside the Docker network but not from the public origin.
+  app.setGlobalPrefix(API_PREFIX, { exclude: ['health', 'health/ready'] })
 
   // One explicit origin. Never `origin: true`, which reflects whatever Origin
   // the request sends: it reads like an allow-list and behaves like "*" - and
