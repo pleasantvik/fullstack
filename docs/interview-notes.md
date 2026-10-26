@@ -1491,6 +1491,21 @@ modules. `server_tokens off` hides the version in headers and error pages.
 **In my project:** the web image is **82 MB** on disk (the API's is 1.39 GB):
 nginx, one config file and the built `dist/` - no Node.
 
+### Does `depends_on` order containers after a host reboot?
+
+No. `depends_on` (and its conditions) applies only when `docker compose up`
+runs. After a reboot, the Docker daemon restarts every container with a restart
+policy **independently and concurrently** - no waiting for health, no one-off
+jobs re-run. Services must tolerate starting before their dependencies (retry
+the database connection), and deploy steps like migrations must be run
+explicitly, never left to restart policies.
+
+**In my project:** after `vagrant reload`, `postgres`, `api` and `web` were back
+within three minutes (`restart: unless-stopped`), while `migrate` stayed at its
+earlier `Exited (0)`. It worked because the API reconnects and there was nothing
+new to migrate - a reboot mid-deploy could start a new API before its
+migrations.
+
 ### Does `EXPOSE` publish a port?
 
 No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.
