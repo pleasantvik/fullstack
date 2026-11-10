@@ -8,7 +8,9 @@
 # no request sets an Authorization header. The jar holds ONE identity for
 # localhost, so switching user means logging in again, exactly as in a browser.
 
-@host = http://localhost:3000
+# Routes live under /api (ADR 0010); health deliberately does not.
+@origin = http://localhost:3000
+@host = {{origin}}/api
 @email = ada@example.com
 @password = correct-horse-battery
 
@@ -214,7 +216,7 @@ GET {{host}}/tasks?status=TODO&page=1&limit=2
 ###
 # --- Health ----------------------------------------------------------------
 # Liveness. No token, no database. 200 as long as the process can respond.
-GET {{host}}/health
+GET {{origin}}/health
 
 ###
 # Readiness. 200 while Postgres is reachable, 503 when it is not.
@@ -223,4 +225,4 @@ GET {{host}}/health
 # `docker compose start postgres` and run it again (200). /health above stays
 # 200 throughout - which is exactly why a restarter must point at it and not
 # at this one.
-GET {{host}}/health/ready
+GET {{origin}}/health/ready

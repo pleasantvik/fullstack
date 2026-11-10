@@ -43,6 +43,7 @@ Vagrant.configure("2") do |config|
   config.vm.network "forwarded_port", guest: 5432, host: 5432, host_ip: "127.0.0.1"  # postgres
   config.vm.network "forwarded_port", guest: 3000, host: 3000, host_ip: "127.0.0.1"  # api
   config.vm.network "forwarded_port", guest: 5173, host: 5173, host_ip: "127.0.0.1"  # vite
+  config.vm.network "forwarded_port", guest: 8080, host: 8080, host_ip: "127.0.0.1"  # web container (nginx)
 
   # The code lives in the VM at ~/task-manager, cloned from GitHub. The default
   # share is disabled so there is no second, slower copy to edit by mistake.
