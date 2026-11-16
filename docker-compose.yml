@@ -18,6 +18,10 @@
 services:
   postgres:
     image: postgres:16
+    # Fixed names, here and on the volume, on purpose: renaming or re-cloning the
+    # folder can never silently start a fresh, empty database. The cost is one
+    # stack per machine - a second copy (the 1.7g clean-checkout test) needs a
+    # docker-compose.override.yml giving it its own names.
     container_name: task-manager-postgres
     restart: unless-stopped
 

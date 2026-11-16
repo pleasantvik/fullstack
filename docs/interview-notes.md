@@ -1506,6 +1506,68 @@ earlier `Exited (0)`. It worked because the API reconnects and there was nothing
 new to migrate - a reboot mid-deploy could start a new API before its
 migrations.
 
+### Is `PORT=` in a `.env` file the same as not setting PORT?
+
+No. `PORT=` sets the variable to the **empty string**. Defaults in config code
+apply only when a variable is **absent**, so `""` reaches validation - where it
+became `0` and failed with a misleading "must not be less than 1". A template
+that lists optional variables as `NAME=` guarantees this for anyone who copies
+it. Show optional variables commented out with their default, and reject empty
+values with an error that says how to fix them.
+
+**In my project (1.7g):** the clean-checkout test crashed on exactly this -
+`NODE_ENV=`, `PORT=`, `WEB_ORIGIN=` copied from `.env.example`.
+
+```bash
+# .env.example
+JWT_SECRET=            # required: fill in
+# PORT=3000            # optional: leave commented to use the default
+```
+```ts
+const empty = Object.keys(new EnvironmentVariables()).filter((name) => raw[name] === "");
+if (empty.length > 0) throw new Error(`Set but empty: ${empty.join(", ")}. Comment the line out to use the default.`);
+```
+
+### Which wins: a Dockerfile `ENV`, Compose `env_file`, or Compose `environment`?
+
+`environment:` beats `env_file:`, and both beat the image's `ENV`. So an
+`env_file` line can silently override what the image was built to run as.
+
+**In my project:** the image sets `ENV NODE_ENV=production`; a copied `.env`
+with `NODE_ENV=` overrode it - and development mode loads `pino-pretty`, which
+the production image doesn't contain. Fixed by setting `NODE_ENV: production`
+under `environment:` for the containerised API.
+
+### What does a "clean checkout" test catch that local testing doesn't?
+
+Everything the repo relies on but doesn't contain: values only in your `.env`,
+a database that already has its migrations, cached image layers, generated
+files. Clone into a new directory, create config from the committed template
+only, run the documented command, and treat every snag as a repo fix, not a
+local workaround. It is also the only time migrations run against an empty
+database.
+
+**In my project:** the first run found the empty-variable crash and the
+`NODE_ENV` override; after fixing them in the repo, a second fresh clone ran
+both migrations from zero and the app worked end to end at `:8080`.
+
+### Why do two builds of identical code have different image IDs?
+
+BuildKit attaches a provenance attestation (with a build timestamp) to the
+image manifest, so the image ID changes even when every layer is a cache hit.
+Running containers then show the old ID as a bare `sha256:`. Compare layers or
+the source commit, not image IDs, to know whether code changed.
+
+### How do you run a second copy of a Compose stack on one machine?
+
+Compose namespaces containers, networks and volumes by project (folder) name -
+unless the file fixes names with `container_name` or a volume `name:`. A
+`docker-compose.override.yml` (merged automatically) can rename them for the
+copy; published ports must also not clash.
+
+**In my project:** names are fixed on purpose so a renamed folder can't
+silently start an empty database; the clean-checkout test used an override.
+
 ### Does `EXPOSE` publish a port?
 
 No - it is documentation. `-p 3000:3000` (or Compose `ports:`) publishes.
