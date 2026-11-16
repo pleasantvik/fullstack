@@ -113,6 +113,23 @@ export class EnvironmentVariables {
 // Runs during module initialisation - before the HTTP server binds a port.
 // Throwing here stops the process, which is the entire point of the increment.
 export function validate(raw: Record<string, unknown>): EnvironmentVariables {
+  // `PORT=` in a .env sets PORT to "", which is not the same as leaving it out:
+  // defaults apply only to absent variables, so "" fails further down with a
+  // misleading message ("must not be less than 1"). Caught first, with the fix
+  // in the error. new EnvironmentVariables() lists every declared field - with
+  // ES2023 class fields, even those without a default exist as own properties.
+  const empty = Object.keys(new EnvironmentVariables()).filter(
+    (name) => raw[name] === "",
+  );
+  if (empty.length > 0) {
+    throw new Error(
+      `Set but empty: ${empty.join(", ")}.\n` +
+        `  An empty value is not the same as unset - defaults apply only when a\n` +
+        `  variable is absent. Comment the line out of .env to use the default,\n` +
+        `  or give it a value.\n`,
+    );
+  }
+
   // enableImplicitConversion turns PORT="3000" into the number 3000. Every
   // environment variable is a string; converting once at the boundary means
   // nothing downstream has to remember to parse it.

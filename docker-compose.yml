@@ -74,6 +74,10 @@ services:
       # Overrides .env's localhost URL, which is right for running the API on
       # the VM but wrong inside a container.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # The container is the production shape whatever .env says. env_file would
+      # otherwise override the image's ENV NODE_ENV=production - and in
+      # development mode the logger loads pino-pretty, which the image lacks.
+      NODE_ENV: production
     ports:
       - "3000:3000"
     depends_on:
