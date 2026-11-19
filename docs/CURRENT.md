@@ -1,10 +1,10 @@
 # Where we are
 
 **Active milestone:** 1 — September, the delivery spine
-**Active increment:** 1.7 — Containerise (a–e done; **1.7f next**)
+**Active increment:** 1.7 closed. Next: **1.8 — CI**
 **Schedule:** Milestone 1 runs into mid-October. The month names in the roadmap
 are ordering, not deadlines — see the note at the top of `docs/roadmap.md`.
-**Last updated:** 2026-10-18
+**Last updated:** 2026-11-16
 
 ## Start here next session
 
@@ -38,29 +38,31 @@ measuring** - it holds port 5173 and serves an old build that looks almost
 right (it fooled us once). `strictPort` makes the dev server refuse the port
 rather than quietly moving to 5174.
 
-**First: is the 1.7e PR merged?** (`feat/1.7e-compose-api`: migrate target,
-API in Compose, OpenSSL in the build stage.) Merge it, then branch for 1.7f
-from `origin/main`.
+**First: is the 1.7g PR merged?** (`feat/1.7g-clean-checkout`: the
+`.env.example` fixes, the "set but empty" check, NODE_ENV pinned in Compose,
+and the 1.7 close-out.) Merge it, then branch for 1.8 from `origin/main`.
 
-Done in 1.7 so far: API image (1.7a-d, #25 - naive 1.58 GB → multi-stage,
-non-root, healthcheck; rebuild after a code change 2 min 7 s → 20 s) and Compose
-running postgres → migrate → api (1.7e). Numbers are in the commit messages and
-`docs/interview-notes.md` section 10.
+Read the "What I'd do differently" in the 1.7 milestone note - drafted from
+three candidates; confirm or rewrite it in your own words.
 
-Then **1.7f — web image**, which opens with a decision waiting since 1.6a:
-`VITE_API_URL` is baked into the bundle at build time, so a web image cannot be
-promoted between environments like the API image. Options: one image per
-environment; a config file written when the container starts; or serving the
-API on the **same origin** behind Nginx (`/api`), which removes the problem and
-CORS - and ties into 1.9's Nginx. Decide first, then a multi-stage build: Vite
-build → Nginx serving static files with an SPA fallback.
+**1.7 in one paragraph:** the whole stack runs in containers - Postgres, a
+`migrate` job, the API, and nginx serving the web app with `/api` proxied on the
+same origin (ADR 0010). `docker compose up -d --build` on a fresh clone with a
+`.env` from the template works end to end (1.7g). Numbers and lessons in the
+milestone note and `docs/interview-notes.md` section 10.
 
-Then **1.7g** - `docker compose up` on a clean checkout runs everything. That is
-the slice 1.7 exists for: definition-of-done item 1.
+Then **1.8 — CI**: GitHub Actions on every PR (install, lint, type-check, test,
+build), and on merge to main build and push tagged images to GHCR; required
+status checks on `main`. Concept focus: the deploy artefact is an image, not a
+`git pull`, and how to tag it. Things 1.8 has to create first, because they
+do not exist yet: a linter/formatter, and at least one test (`task-rules.ts`
+is the easy first target). The API has no `typecheck` script - the root
+`pnpm typecheck` silently skips it.
 
-Open from 1.7: ~170 MB of Prisma CLI still in the runtime image as an optional
-peer of `@prisma/client` - no longer needed there now migrations have their own
-target; base image not pinned by digest; `X-Powered-By: Express` header.
+Open from 1.7: ~170 MB of Prisma CLI in the runtime image (no longer needed -
+migrations have their own target); base images not pinned by digest; a BuildKit
+cache mount for the pnpm store; `X-Powered-By: Express`; CORS removable once 1.9
+proves the proxied path; forwarded headers to trust deliberately.
 
 Frontend conventions (settled at the 1.6 close-out): one component per file;
 components presentational; logic in hooks or plain functions. Frontend

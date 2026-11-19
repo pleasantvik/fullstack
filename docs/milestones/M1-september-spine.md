@@ -557,6 +557,79 @@ failing Lighthouse accessibility audit (95); passing the `AbortSignal` through
 `api.get`; cross-tab refresh races; server-side versioning for concurrent edits
 (Milestone 3); route-level code splitting.
 
+### 1.7 — Containerise *(2026-11-16)*
+
+Seven slices: 1.7a-d the API image (naive, layer order, multi-stage,
+non-root and healthcheck), 1.7e migrations and the API in Compose, 1.7f the
+same-origin API (ADR 0010) and the web image, 1.7g a clean-checkout run.
+
+**What I built:** the whole stack in containers - Postgres, a one-off
+`migrate` job, the API and an nginx web container - started in order by one
+`docker compose up -d --build`, and proven from a fresh clone with nothing but a
+`.env` filled in from the template. Definition-of-done item 1, "not yet
+possible" since 1.1, now holds.
+
+| Measured | Before | After |
+|---|---|---|
+| API image, on disk / compressed | 1.58 GB / 334 MB (naive) | 1.39 GB / 286 MB (multi-stage) |
+| API rebuild after a one-line code change | 2 min 7 s | 20 s (manifests → install → source) |
+| Web image | - | 82 MB (nginx + `dist/`, no Node) |
+| Migrations against an empty database | never run | both applied, 1.7g |
+
+*Decisions:* multi-stage builds with production-only installs; `USER node` with
+root-owned code; a liveness `HEALTHCHECK` written in Node (no curl in the
+image); migrations as their own `migrate` target and Compose job, gated by
+`service_completed_successfully`; the API under `/api` on the web app's origin
+(ADR 0010), with cookie paths following the prefix and the access cookie
+narrowed to `/api`; unprivileged nginx with immutable caching for hashed assets,
+`no-cache` for `index.html`, an SPA fallback and gzip; unknown request fields
+rejected (ADR 0009).
+
+**What broke, and why:**
+
+1. *`--prod` wasn't lean.* `@prisma/client`'s optional peers are linked to the
+   API's devDependencies in the lockfile, so ~170 MB of Prisma CLI, Studio and
+   TypeScript survived the multi-stage build. Found only by `du` inside the
+   image.
+2. *A tool guessed silently.* Prisma couldn't detect OpenSSL on the slim image
+   and guessed its migration engine; it "worked" because there was nothing to
+   migrate. Fixed by installing openssl before the install.
+3. *A failed `up` left a half-built container* - healthy inside, no port, no
+   network name, the previous image - and the next `up` reused it. nginx looped
+   on "host not found in upstream". Fixed with `--force-recreate`.
+4. *Restart policies don't sequence.* After a reboot everything came back at
+   once, ignoring `depends_on`; fine only because the API reconnects and there
+   was nothing to migrate.
+5. *The template crashed the app.* `.env.example` listed optional variables as
+   `NAME=`, which sets them to empty rather than leaving them unset; an empty
+   `NODE_ENV` also overrode the image's `production`. Wrong since 1.3, found by
+   the first clean checkout. Fixed in the template, in Compose, and with a "set
+   but empty" error.
+6. *Process:* 1.7e was committed on the previous slice's branch and merged
+   inside PR #25; a fix commit was typed into the test clone; the test stack's
+   API crash-looped for six days unnoticed.
+
+My own errors in teaching, corrected on the record: argon2 does have a musl
+build (the alpine reasoning was overstated), and my suggested
+`Object.keys(dto)` empty check would never have fired under ES2023 class fields.
+
+**What I'd do differently:** *(drafted from three candidates - Adedayo,
+confirm or edit before merging)*
+
+- Branch before the first commit, every time - `git status -sb` before each
+  commit would have caught both wrong-branch mistakes.
+- Test the setup instructions as a stranger earlier. The broken
+  `.env.example` had been wrong since 1.3; a clean checkout at the end of each
+  increment would have found it months sooner.
+- Stop test stacks when done. `restart: unless-stopped` kept a broken one alive
+  for six days without anyone noticing.
+
+**Open:** the Prisma CLI is no longer needed in the runtime image now
+migrations have their own target; base images not pinned by digest; a BuildKit
+cache mount for the pnpm store; `X-Powered-By: Express`; CORS can go once 1.9
+proves the proxied path; trusting forwarded headers deliberately.
+
+
 ---
 
 ## Reflection
